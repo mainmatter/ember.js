@@ -2,6 +2,7 @@ import { setOwner } from '@ember/-internals/owner';
 import { runDestroy, buildOwner, moduleFor, AbstractTestCase } from 'internal-test-helpers';
 import Service, { service } from '@ember/service';
 import EmberRoute from '@ember/routing/route';
+import PioneerRoute from '@ember/routing/pioneer-route';
 import ObjectProxy from '@ember/object/proxy';
 import { getDebugFunction, setDebugFunction } from '@ember/debug';
 
@@ -99,9 +100,15 @@ moduleFor(
         currentModel = foo;
       };
 
+      let BarRoute = class extends PioneerRoute {
+        currentModel = { name: 'pioneer' };
+      }
+
       owner.register('route:foo', FooRoute);
+      owner.register('route:bar', BarRoute);
 
       assert.strictEqual(route.modelFor('foo'), foo);
+      assert.strictEqual(route.modelFor('bar'), foo);
 
       runDestroy(owner);
     }

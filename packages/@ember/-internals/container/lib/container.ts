@@ -12,6 +12,7 @@ import { assert } from '@ember/debug';
 import { DEBUG } from '@glimmer/env';
 import type { DebugRegistry } from './registry';
 import type Registry from './registry';
+import { getRouteManager } from '../../routing/route-managers/utils';
 
 interface LeakTracking {
   hasContainers(): boolean;
@@ -391,7 +392,21 @@ function instantiateFactory(
   // SomeClass { singleton: true, instantiate: true } | { singleton: true } | { instantiate: true } | {}
   // By default majority of objects fall into this case
   if (isSingletonInstance(container, fullName, options)) {
-    let instance = (container.cache[normalizedName] = factoryManager.create());
+    let instance;
+
+    if (normalizedName.startsWith('route:')) {
+      let factory = factoryManager.class;
+      // wip wip wip, we're creating a route manager instance on the fly here, should probably be singleton/cached
+      let routeManager = getRouteManager(factory);
+      assert('Route manager needs to be defined', Boolean(routeManager));
+      let routeManagerInstance = routeManager(container.owner);
+      // What should own this? Router?
+      let routeStateBucket = routeManagerInstance?.createRoute(factoryManager, {});
+      instance = routeStateBucket.instance;
+      container.cache[normalizedName] = instance;
+    } else {
+      instance = container.cache[normalizedName] = factoryManager.create();
+    }
 
     // if this lookup happened _during_ destruction (emits a deprecation, but
     // is still possible) ensure that it gets destroyed

@@ -36,6 +36,7 @@ import {
   prefixRouteNameArg,
   stashParamNames,
 } from './lib/utils';
+import { ClassicRouteManager, setRouteManager } from '@ember/-internals/routing';
 
 export interface ExtendedInternalRouteInfo<R extends Route> extends InternalRouteInfo<R> {
   _names?: unknown[];
@@ -2228,5 +2229,9 @@ Route.reopen({
     },
   },
 });
+
+setRouteManager((owner) => {
+  return new ClassicRouteManager(owner);
+}, Route);
 
 export default Route;

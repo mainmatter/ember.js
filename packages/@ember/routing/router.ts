@@ -52,6 +52,7 @@ import type { Template } from '@glimmer/interfaces';
 import type ApplicationInstance from '@ember/application/instance';
 import type { RouteStateBucket } from '@ember/-internals/routing/route-managers/utils';
 import { getRouteManager } from '@ember/-internals/routing/route-managers/utils';
+import type { RouteManager } from '@ember/-internals/routing';
 
 /**
 @module @ember/routing/router
@@ -314,27 +315,32 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
   }
 
   // WIP: Rough implementation of the Router instance keeping track of and managing instantiation of Routes
-  #routes = new Map<string, RouteStateBucket>();
+  #routeManagerInstances = new WeakMap<object, RouteManager<unknown>>(); // RouteManagers are always Singletons, we keep track of them here for now.
+  #routes = new Map<string, RouteStateBucket>(); // Routes are also Singletons, we keep track of them here for now.
   getRoute(name: string) {
     const owner = getOwner(this);
     assert('BUG: Missing owner', owner);
-    assert('Name should start with "route:"', name.startsWith('route:'));
+    assert('Name should not start with "route:"', !name.startsWith('route:'));
+    assert('Name should not be namespaced"', !name.includes(':'));
 
-    let instance = this.#routes.get; //owner.lookup(name);
     if (!this.#routes.has(name)) {
       let factoryManager = owner.factoryFor(`route:${name}`);
       assert('BUG: Missing factory for route', factoryManager);
 
       let factory = factoryManager.class;
-      // wip wip wip, we're creating a route manager instance on the fly here, should probably be singleton/cached
+
+      // Get and instantiate (if necessary) the applicable RouteManager implementation for this route.
       let routeManager = getRouteManager(factory);
       assert('Route manager needs to be defined', Boolean(routeManager));
-      let routeManagerInstance = routeManager(owner);
-      // What should own this? Router?
+      if (!this.#routeManagerInstances.has(routeManager)) {
+        this.#routeManagerInstances.set(routeManager, routeManager?.(owner));
+      }
+      let routeManagerInstance = this.#routeManagerInstances.get(routeManager);
+
+      // Actual route instance & state. Not sure yet if we need anything other than the instance, but this mirrors other Manager implementations.
       let routeStateBucket = routeManagerInstance?.createRoute(factoryManager, {});
-      instance = routeStateBucket.instance;
-      assert('Failed to create Route instance', instance);
-      this.#routes.set(name, routeStateBucket);
+      assert('Failed to create Route instance', routeStateBucket.instance);
+      this.#routes.set(name, routeStateBucket as RouteStateBucket);
     }
 
     return this.#routes.get(name)!.instance;

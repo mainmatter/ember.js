@@ -1,8 +1,8 @@
 import type { Owner } from '@glimmer/interfaces';
-import type { ManagerFactory, RouteManager } from './classic';
 import { DEBUG } from '@glimmer/env';
 import { debugToString } from '@glimmer/debug-util';
 import { debugAssert } from '@glimmer/global-context';
+import type { ManagerFactory, RouteManager } from './route-manager';
 
 export interface RouteStateBucket {
   instance: unknown;
@@ -46,7 +46,7 @@ function setManager<Def extends object>(
   return obj;
 }
 
-function getManager<M extends InternalManager>(
+function getManager<M extends RouteManager<unknown>>(
   map: WeakMap<object, M>,
   obj: object
 ): M | undefined {

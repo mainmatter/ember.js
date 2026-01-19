@@ -4,6 +4,10 @@ import { DEBUG } from '@glimmer/env';
 import { debugToString } from '@glimmer/debug-util';
 import { debugAssert } from '@glimmer/global-context';
 
+export interface RouteStateBucket {
+  instance: unknown;
+  args: object;
+}
 
 const ROUTE_MANAGERS = new WeakMap<object, RouteManager<unknown>>();
 

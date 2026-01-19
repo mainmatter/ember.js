@@ -1,5 +1,7 @@
 import type { Capabilities } from '@glimmer/interfaces';
 import type Owner from '../../owner';
+import type Route from '@ember/routing/route';
+import type { RouteStateBucket } from './utils';
 
 export interface RouteCapabilities extends Capabilities {
 
@@ -14,8 +16,8 @@ export interface RouteManager<RouteStateBucket> {
 export type Manager = RouteManager<unknown>; // TODO: do we merge this with @glimmer/manager manager types?
 export type ManagerFactory<O, D extends Manager = Manager> = (owner: O) => D;
 
-interface ClassicRouteStateBucket {
-  instance: unknown;
+interface ClassicRouteStateBucket extends RouteStateBucket {
+  instance: Route;
   args: object;
 }
 

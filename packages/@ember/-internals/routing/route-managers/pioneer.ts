@@ -1,7 +1,9 @@
 import type Owner from '../../owner';
+import type { RouteStateBucket } from './utils';
+import type PioneerRoute from '@ember/routing/pioneer-route';
 
-interface PioneerRouteStateBucket {
-  instance: unknown;
+interface PioneerRouteStateBucket extends RouteStateBucket {
+  instance: PioneerRoute;
   args: object;
 }
 

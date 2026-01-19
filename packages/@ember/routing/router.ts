@@ -1,7 +1,7 @@
-import { privatize as P } from '@ember/-internals/container';
+import { getFactoryFor, privatize as P } from '@ember/-internals/container';
 import type { BootEnvironment, OutletState, OutletView } from '@ember/-internals/glimmer';
 import { computed, get, set } from '@ember/object';
-import type { default as Owner, FactoryManager } from '@ember/owner';
+import type { default as Owner, FactoryManager, FullName } from '@ember/owner';
 import { getOwner } from '@ember/owner';
 import { default as BucketCache } from './lib/cache';
 import { default as DSL, type DSLCallback } from './lib/dsl';
@@ -50,6 +50,8 @@ import type { QueryParams } from 'route-recognizer';
 import type { AnyFn, MethodNamesOf, OmitFirst } from '@ember/-internals/utility-types';
 import type { Template } from '@glimmer/interfaces';
 import type ApplicationInstance from '@ember/application/instance';
+import type { RouteStateBucket } from '@ember/-internals/routing/route-managers/utils';
+import { getRouteManager } from '@ember/-internals/routing/route-managers/utils';
 
 /**
 @module @ember/routing/router
@@ -311,6 +313,33 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
     this._routerService = routerService;
   }
 
+  // WIP: Rough implementation of the Router instance keeping track of and managing instantiation of Routes
+  #routes = new Map<string, RouteStateBucket>();
+  getRoute(name: string) {
+    const owner = getOwner(this);
+    assert('BUG: Missing owner', owner);
+    assert('Name should start with "route:"', name.startsWith('route:'));
+
+    let instance = this.#routes.get; //owner.lookup(name);
+    if (!this.#routes.has(name)) {
+      let factoryManager = owner.factoryFor(`route:${name}`);
+      assert('BUG: Missing factory for route', factoryManager);
+
+      let factory = factoryManager.class;
+      // wip wip wip, we're creating a route manager instance on the fly here, should probably be singleton/cached
+      let routeManager = getRouteManager(factory);
+      assert('Route manager needs to be defined', Boolean(routeManager));
+      let routeManagerInstance = routeManager(owner);
+      // What should own this? Router?
+      let routeStateBucket = routeManagerInstance?.createRoute(factoryManager, {});
+      instance = routeStateBucket.instance;
+      assert('Failed to create Route instance', instance);
+      this.#routes.set(name, routeStateBucket);
+    }
+
+    return this.#routes.get(name)!.instance;
+  }
+
   _initRouterJs(): void {
     let location = get(this, 'location') as EmberLocation;
     let router = this;
@@ -335,7 +364,7 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
 
         assert('Route is unexpectedly missing an owner', routeOwner);
 
-        let route = routeOwner.lookup(fullRouteName) as Route | undefined;
+        let route = router.getRoute(routeName) as Route | undefined;
 
         if (seen[name]) {
           assert('seen routes should exist', route);

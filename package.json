@@ -6,7 +6,10 @@
     "ember-addon"
   ],
   "exports": {
-    "./*": "./dist/packages/*",
+    "./*": {
+      "development": "./packages/*",
+      "default": "./dist/packages/*"
+    },
     "./types": {
       "types": "./types/stable/index.d.ts"
     },

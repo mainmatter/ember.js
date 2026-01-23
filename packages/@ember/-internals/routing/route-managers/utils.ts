@@ -1,6 +1,5 @@
 import type { Owner } from '@glimmer/interfaces';
 import { DEBUG } from '@glimmer/env';
-import { debugToString } from '@glimmer/debug-util';
 import { debugAssert } from '@glimmer/global-context';
 import type { ManagerFactory, RouteManager } from './route-manager';
 
@@ -29,16 +28,15 @@ function setManager<Def extends object>(
     debugAssert(
       obj !== null && (typeof obj === 'object' || typeof obj === 'function'),
 
-      `Attempted to set a manager on a non-object value. Managers can only be associated with objects or functions. Value was ${debugToString!(
+      `Attempted to set a manager on a non-object value. Managers can only be associated with objects or functions. Value was ${
         obj
-      )}`
+      }`
     );
 
     debugAssert(
       !map.has(obj),
-      `Attempted to set the same type of manager multiple times on a value. You can only associate one manager of each type with a given value. Value was ${debugToString!(
-        obj
-      )}`
+      `Attempted to set the same type of manager multiple times on a value. You can only associate one manager of each type with a given value. Value was ${
+        obj}`
     );
   }
 
@@ -75,7 +73,7 @@ export function setRouteManager<O extends Owner, T extends object>(
 }
 
 export function getRouteManager<T extends object>(definition: T): RouteManager<unknown> | undefined {
-  console.log(Object.entries(ROUTE_MANAGERS));
+  console.log("ember-source route manager", Object.entries(ROUTE_MANAGERS));
   const manager = getManager(ROUTE_MANAGERS, definition);
 
   if (manager === undefined) {
@@ -83,9 +81,9 @@ export function getRouteManager<T extends object>(definition: T): RouteManager<u
     if (DEBUG) {
       debugAssert(
         false,
-        `Attempted to load a route, but there wasn't a route manager associated with the definition. The definition was: ${debugToString!(
+        `Attempted to load a route, but there wasn't a route manager associated with the definition. The definition was: ${
           definition
-        )}`
+        }`
       );
     }
 

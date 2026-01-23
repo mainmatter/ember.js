@@ -50,8 +50,8 @@ import type { QueryParams } from 'route-recognizer';
 import type { AnyFn, MethodNamesOf, OmitFirst } from '@ember/-internals/utility-types';
 import type { Template } from '@glimmer/interfaces';
 import type ApplicationInstance from '@ember/application/instance';
-import type { RouteStateBucket } from '@ember/-internals/routing/route-managers/utils';
-import { getRouteManager } from '@ember/-internals/routing/route-managers/utils';
+import type { RouteStateBucket } from '../-internals/routing/route-managers/utils';
+import { getRouteManager } from '../-internals/routing/route-managers/utils';
 import type { RouteManager } from '@ember/-internals/routing';
 
 /**

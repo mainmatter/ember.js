@@ -36,7 +36,8 @@ import {
   prefixRouteNameArg,
   stashParamNames,
 } from './lib/utils';
-import { ClassicRouteManager, setRouteManager } from '@ember/-internals/routing';
+import { ClassicRouteManager } from '../-internals/routing/route-managers/classic';
+import { setRouteManager } from '../-internals/routing/route-managers/utils'
 
 export interface ExtendedInternalRouteInfo<R extends Route> extends InternalRouteInfo<R> {
   _names?: unknown[];

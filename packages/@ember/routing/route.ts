@@ -1686,7 +1686,7 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler, Evented) 
       propertyNames.push(propName);
     }
 
-    return {
+    let result = {
       qps,
       map,
       propertyNames,
@@ -1724,6 +1724,11 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler, Evented) 
         },
       },
     };
+
+    console.log('_qp', result);
+    debugger;
+
+    return result;
   }
 
   // Set in reopen

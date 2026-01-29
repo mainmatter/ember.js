@@ -1,10 +1,13 @@
 import Backburner from 'backburner';
-import Router, { Route, Transition } from 'router';
-import { Dict } from 'router/core';
-import RouteInfo, { IModel, UnresolvedRouteInfoByParam } from 'router/route-info';
-import { logAbort, PublicTransition } from 'router/transition';
-import { TransitionError } from 'router/transition-state';
-import { UnrecognizedURLError } from 'router/unrecognized-url-error';
+import type { Route, Transition } from 'router';
+import Router from 'router';
+import type { Dict } from 'router/core';
+import type { IModel } from 'router/route-info';
+import RouteInfo, { UnresolvedRouteInfoByParam } from 'router/route-info';
+import type { PublicTransition } from 'router/transition';
+import { logAbort } from 'router/transition';
+import type { TransitionError } from 'router/transition-state';
+import type { UnrecognizedURLError } from 'router/unrecognized-url-error';
 import { configure, resolve } from 'rsvp';
 import { isTransitionAborted } from 'router/transition-aborted-error';
 
@@ -127,10 +130,10 @@ export {
 };
 
 export function createHandler<T extends IModel>(name: string, options?: Dict<unknown>): Route<T> {
-  return (Object.assign(
+  return Object.assign(
     { name, routeName: name, context: {}, names: [], handler: name, _internalName: name },
     options
-  ) as unknown) as Route<T>;
+  ) as unknown as Route<T>;
 }
 
 export class TestRouter<R extends Route = Route> extends Router<R> {

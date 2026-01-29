@@ -1,14 +1,16 @@
-import { MatchCallback } from 'route-recognizer';
-import Router, { Route, Transition } from 'router';
-import { Dict, Maybe } from 'router/core';
-import RouteInfo, {
+import type { MatchCallback } from 'route-recognizer';
+import type { Route, Transition } from 'router';
+import type Router from 'router';
+import type { Dict, Maybe } from 'router/core';
+import type {
   IModel,
   RouteInfo as PublicRouteInfo,
   RouteInfoWithAttributes,
 } from 'router/route-info';
-import { SerializerFunc } from 'router/router';
+import type RouteInfo from 'router/route-info';
+import type { SerializerFunc } from 'router/router';
 import { logAbort, PARAMS_SYMBOL, QUERY_PARAMS_SYMBOL, STATE_SYMBOL } from 'router/transition';
-import { TransitionError } from 'router/transition-state';
+import type { TransitionError } from 'router/transition-state';
 import { Promise, reject } from 'rsvp';
 import {
   assertAbort,
@@ -2286,7 +2288,7 @@ scenarios.forEach(function (scenario) {
         },
 
         setup: function (posts: Dict<unknown>, transition: Transition) {
-          assert.ok(!isExiting((this as unknown) as Route, transition.routeInfos));
+          assert.ok(!isExiting(this as unknown as Route, transition.routeInfos));
           assert.equal(
             posts,
             allPosts,
@@ -2296,7 +2298,7 @@ scenarios.forEach(function (scenario) {
         },
 
         exit: function (transition: Transition) {
-          assert.ok(isExiting((this as unknown) as Route, transition.routeInfos));
+          assert.ok(isExiting(this as unknown as Route, transition.routeInfos));
         },
       }),
 

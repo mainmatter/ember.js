@@ -1,35 +1,20 @@
-import RouteRecognizer, { MatchCallback, Params, QueryParams } from 'route-recognizer';
+import type { MatchCallback, Params, QueryParams } from 'route-recognizer';
+import RouteRecognizer from 'route-recognizer';
 import { Promise } from 'rsvp';
-import { Dict, Maybe, Option } from './core';
-import InternalRouteInfo, {
-  ModelFor,
-  Route,
-  RouteInfo,
-  RouteInfoWithAttributes,
-  toReadOnlyRouteInfo,
-} from './route-info';
-import InternalTransition, {
-  logAbort,
-  OpaqueTransition,
-  PublicTransition as Transition,
-  QUERY_PARAMS_SYMBOL,
-  STATE_SYMBOL,
-} from './transition';
+import type { Dict, Maybe, Option } from './core';
+import type { ModelFor, Route, RouteInfo, RouteInfoWithAttributes } from './route-info';
+import type InternalRouteInfo from './route-info';
+import { toReadOnlyRouteInfo } from './route-info';
+import type { OpaqueTransition, PublicTransition as Transition } from './transition';
+import InternalTransition, { logAbort, QUERY_PARAMS_SYMBOL, STATE_SYMBOL } from './transition';
 import { throwIfAborted, isTransitionAborted } from './transition-aborted-error';
-import { TransitionIntent } from './transition-intent';
+import type { TransitionIntent } from './transition-intent';
 import NamedTransitionIntent from './transition-intent/named-transition-intent';
 import URLTransitionIntent from './transition-intent/url-transition-intent';
-import TransitionState, { TransitionError } from './transition-state';
-import {
-  ChangeList,
-  extractQueryParams,
-  forEach,
-  getChangelist,
-  log,
-  merge,
-  ModelsAndQueryParams,
-  promiseLabel,
-} from './utils';
+import type { TransitionError } from './transition-state';
+import TransitionState from './transition-state';
+import type { ChangeList, ModelsAndQueryParams } from './utils';
+import { extractQueryParams, forEach, getChangelist, log, merge, promiseLabel } from './utils';
 
 export interface SerializerFunc<T> {
   (model: T, params: string[]): Dict<unknown>;
@@ -311,9 +296,8 @@ export default abstract class Router<R extends Route> {
     if (lastArg && Object.prototype.hasOwnProperty.call(lastArg, 'queryParams')) {
       // We just checked this.
       // TODO: Use an assertion?
-      queryParams = (modelsArray.pop() as { queryParams: QueryParams }).queryParams as Dict<
-        unknown
-      >;
+      queryParams = (modelsArray.pop() as { queryParams: QueryParams })
+        .queryParams as Dict<unknown>;
     }
 
     let intent;
@@ -1056,7 +1040,7 @@ function routeInfosEqual<R1 extends Route, R2 extends Route>(
 
   for (let i = 0, len = routeInfos.length; i < len; ++i) {
     // SAFETY: Just casting for comparison
-    if (routeInfos[i] !== ((otherRouteInfos[i] as unknown) as InternalRouteInfo<R1>)) {
+    if (routeInfos[i] !== (otherRouteInfos[i] as unknown as InternalRouteInfo<R1>)) {
       return false;
     }
   }

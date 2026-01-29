@@ -1,25 +1,16 @@
-import { getFactoryFor, privatize as P } from '@ember/-internals/container';
+import { privatize as P } from '@ember/-internals/container';
 import type { BootEnvironment, OutletState, OutletView } from '@ember/-internals/glimmer';
-import { computed, get, set } from '@ember/object';
-import type { default as Owner, FactoryManager, FullName } from '@ember/owner';
+import EmberObject, { computed, get, set } from '@ember/object';
+import type { default as Owner, FactoryManager } from '@ember/owner';
 import { getOwner } from '@ember/owner';
 import { default as BucketCache } from './lib/cache';
 import { default as DSL, type DSLCallback } from './lib/dsl';
 import RouterState from './lib/router_state';
 import type { EngineRouteInfo } from './lib/engines';
-import {
-  calculateCacheKey,
-  extractRouteArgs,
-  getActiveTargetName,
-  resemblesURL,
-} from './lib/utils';
 import type { RouteArgs, RouteOptions } from './lib/utils';
-import type {
-  default as EmberLocation,
-  Registry as LocationRegistry,
-} from '@ember/routing/location';
+import { calculateCacheKey, extractRouteArgs, getActiveTargetName, resemblesURL, } from './lib/utils';
+import type { default as EmberLocation, Registry as LocationRegistry, } from '@ember/routing/location';
 import type RouterService from '@ember/routing/router-service';
-import EmberObject from '@ember/object';
 import { A as emberA } from '@ember/array';
 import { typeOf } from '@ember/utils';
 import Evented from '@ember/object/evented';
@@ -27,12 +18,12 @@ import { assert, info } from '@ember/debug';
 import { cancel, once, run, scheduleOnce } from '@ember/runloop';
 import { DEBUG } from '@glimmer/env';
 import {
-  type QueryParamMeta,
   type default as Route,
   defaultSerialize,
   getFullQueryParams,
   getRenderState,
   hasDefaultSerialize,
+  type QueryParamMeta,
 } from '@ember/routing/route';
 import type {
   InternalRouteInfo,
@@ -53,6 +44,8 @@ import type ApplicationInstance from '@ember/application/instance';
 import type { RouteStateBucket } from '../-internals/routing/route-managers/utils';
 import { getRouteManager } from '../-internals/routing/route-managers/utils';
 import type { RouteManager } from '@ember/-internals/routing';
+import PioneerRoute from './pioneer-route';
+import { OWNER } from '@glimmer/owner';
 
 /**
 @module @ember/routing/router
@@ -346,6 +339,10 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
     return this.#routes.get(name)!.instance;
   }
 
+  getRouteBucket(name: string) {
+    return this.#routes.get(name);
+  }
+
   _initRouterJs(): void {
     let location = get(this, 'location') as EmberLocation;
     let router = this;
@@ -371,6 +368,14 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
         assert('Route is unexpectedly missing an owner', routeOwner);
 
         let route = router.getRoute(routeName) as Route | undefined;
+        // if (route instanceof PioneerRoute) {
+          // route.beforeModel = () => {
+          //   console.log('enter called');
+          //   let bucket = router.getRouteBucket(routeName);
+          //   let manager = getRouteManager(PioneerRoute)();
+          //   return manager.enter(bucket);
+          // };
+        // }
 
         if (seen[name]) {
           assert('seen routes should exist', route);
@@ -623,6 +628,8 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
   }
 
   _setOutlets() {
+    console.log('setOutlets');
+    //debugger;
     // This is triggered async during Route#willDestroy.
     // If the router is also being destroyed we do not want to
     // to create another this._toplevelView (and leak the renderer)
@@ -640,7 +647,14 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
 
     for (let routeInfo of routeInfos) {
       let route = routeInfo.route!;
-      let render = getRenderState(route);
+      let render;
+      if (route instanceof PioneerRoute) {
+        let routeManager = getRouteManager(PioneerRoute)();
+        let bucket = this.#routes.get(route.routeName);
+        render = routeManager.getRenderState(bucket);
+      } else {
+        render = getRenderState(route);
+      }
 
       if (render) {
         let state: OutletState = {
@@ -1093,7 +1107,11 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
 
     this._prepareQueryParams(targetRouteName, models, queryParams, Boolean(_fromRouterService));
 
-    let transition = this._routerMicrolib.transitionTo(targetRouteName, ...models, { queryParams });
+    //this[OWNER].lookup('route:application')?.startVT();
+
+    let transition = this._routerMicrolib.transitionTo(targetRouteName, ...models, {
+      queryParams,
+    });
 
     didBeginTransition(transition, this);
 
@@ -1812,6 +1830,7 @@ function updatePaths(router: EmberRouter) {
 }
 
 function didBeginTransition(transition: Transition, router: EmberRouter) {
+  console.log('did begin transition');
   let routerState = new RouterState(router, router._routerMicrolib, transition[STATE_SYMBOL]!);
 
   if (!router.currentState) {
@@ -1826,6 +1845,7 @@ function didBeginTransition(transition: Transition, router: EmberRouter) {
       throw error;
     }
   }, 'Transition Error');
+  console.log('end did begin transition');
 }
 
 function forEachQueryParam(

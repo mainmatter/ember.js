@@ -11,6 +11,10 @@
     "dist/cjs",
     "dist/modules"
   ],
+  "exports": {
+    ".": { "default": "./lib/router/index.ts" },
+    "./dist/modules/index.js": { "default": "./lib/router/index.ts" }
+  },
   "types": "dist/modules/index.d.ts",
   "scripts": {
     "lint": "npm-run-all lint:*",

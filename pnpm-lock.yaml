@@ -74,8 +74,8 @@ importers:
         specifier: ^0.3.4
         version: 0.3.4
       router_js:
-        specifier: ^8.0.5
-        version: 8.0.6(route-recognizer@0.3.4)(rsvp@4.8.5)
+        specifier: workspace:*
+        version: link:packages/router_js
       semver:
         specifier: ^7.5.2
         version: 7.7.1
@@ -483,8 +483,8 @@ importers:
         specifier: workspace:*
         version: link:../../internal-test-helpers
       router_js:
-        specifier: ^8.0.5
-        version: 8.0.6(route-recognizer@0.3.4)(rsvp@4.8.5)
+        specifier: workspace:*
+        version: link:../../router_js
       rsvp:
         specifier: ^4.8.5
         version: 4.8.5
@@ -565,8 +565,8 @@ importers:
         specifier: workspace:*
         version: link:../../internal-test-helpers
       router_js:
-        specifier: ^8.0.5
-        version: 8.0.6(route-recognizer@0.3.4)(rsvp@4.8.5)
+        specifier: workspace:*
+        version: link:../../router_js
 
   packages/@ember/array:
     dependencies:
@@ -830,8 +830,8 @@ importers:
         specifier: workspace:*
         version: link:../../internal-test-helpers
       router_js:
-        specifier: ^8.0.5
-        version: 8.0.6(route-recognizer@0.3.4)(rsvp@4.8.5)
+        specifier: workspace:*
+        version: link:../../router_js
 
   packages/@ember/enumerable:
     dependencies:
@@ -1113,8 +1113,8 @@ importers:
         specifier: workspace:*
         version: link:../../internal-test-helpers
       router_js:
-        specifier: ^8.0.5
-        version: 8.0.6(route-recognizer@0.3.4)(rsvp@4.8.5)
+        specifier: workspace:*
+        version: link:../../router_js
 
   packages/@ember/runloop:
     dependencies:
@@ -2522,8 +2522,8 @@ importers:
         specifier: workspace:*
         version: link:../internal-test-helpers
       router_js:
-        specifier: ^8.0.5
-        version: 8.0.6(route-recognizer@0.3.4)(rsvp@4.8.5)
+        specifier: workspace:*
+        version: link:../router_js
       rsvp:
         specifier: ^4.8.5
         version: 4.8.5
@@ -2681,8 +2681,8 @@ importers:
         specifier: workspace:*
         version: link:../internal-test-helpers
       router_js:
-        specifier: ^8.0.5
-        version: 8.0.6(route-recognizer@0.3.4)(rsvp@4.8.5)
+        specifier: workspace:*
+        version: link:../router_js
 
   packages/internal-test-helpers:
     dependencies:
@@ -2783,8 +2783,8 @@ importers:
         specifier: workspace:*
         version: link:../ember-template-compiler
       router_js:
-        specifier: ^8.0.5
-        version: 8.0.6(route-recognizer@0.3.4)(rsvp@4.8.5)
+        specifier: workspace:*
+        version: link:../router_js
       rsvp:
         specifier: ^4.8.5
         version: 4.8.5

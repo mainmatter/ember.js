@@ -143,6 +143,12 @@ module.exports = function () {
       files: ['index.html'],
       destDir: 'tests',
     }),
+    toAMD(
+      new Funnel('.', {
+        files: ['testem.js'],
+        destDir: '.',
+      })
+    ),
 
     concattedTests,
   ]);

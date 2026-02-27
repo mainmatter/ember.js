@@ -50,7 +50,7 @@ function onEnd(_current: DeferredActionQueues, next: DeferredActionQueues) {
 
 function flush(queueName: string, next: () => void) {
   if (queueName === 'render' || queueName === _rsvpErrorQueue) {
-    console.log('flushing render');
+    //console.log('flushing render');
     flushAsyncObservers(schedule);
   }
 

@@ -4,7 +4,9 @@ import type { RouteStateBucket } from './utils';
 export interface RouteManager<R extends RouteStateBucket> {
   capabilities: Capabilities;
   createRoute(definition: object, args: object): R;
-  enterRoute(): Promise<unknown> | unknown;
+  enter(): Promise<unknown> | unknown;
+  exit(): void;
+  willDestroy(): void;
 }
 
 export type Manager = RouteManager<unknown>; // TODO: do we merge this with @glimmer/manager manager types?

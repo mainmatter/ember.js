@@ -4,11 +4,11 @@ import { debugAssert } from '@glimmer/global-context';
 import type { ManagerFactory, RouteManager } from './route-manager';
 
 export interface RouteStateBucket {
-  instance: unknown;
+  instance?: unknown;
   args: object;
 }
 
-const ROUTE_MANAGERS = new WeakMap<object, RouteManager<unknown>>();
+const ROUTE_MANAGERS = new Map<object, RouteManager<unknown>>();
 
 /**
  * There is also Reflect.getPrototypeOf,
@@ -62,19 +62,30 @@ function getManager<M extends RouteManager<unknown>>(
   return undefined;
 }
 
-export function setRouteManager<O extends Owner, T extends object>(
+export function setRouteManager<O extends Owner, T extends object | Function>(
   factory: ManagerFactory<O | undefined, RouteManager<unknown>>,
-  obj: T
+  definition: T
 ): T {
-  console.log('Setting route manager', obj, factory);
-  setManager(ROUTE_MANAGERS, factory(obj), obj);
-  ROUTE_MANAGERS.set(obj, factory);
-  return obj;
+  console.log('Setting route manager', definition, factory);
+  setManager(ROUTE_MANAGERS, factory(definition), definition);
+  ROUTE_MANAGERS.set(definition, factory);
+  //debugger;
+  return definition;
 }
 
 export function getRouteManager<T extends object>(definition: T): RouteManager<unknown> | undefined {
   console.log("ember-source route manager", Object.entries(ROUTE_MANAGERS));
-  const manager = getManager(ROUTE_MANAGERS, definition);
+
+  let manager;
+
+  if(!definition) {
+    let [_,_manager] = [...ROUTE_MANAGERS.entries()].find(([definition, manager]) => {
+      return definition.prototype.isFunctional;
+    });
+    manager = _manager;
+  } else {
+    manager = getManager(ROUTE_MANAGERS, definition);
+  }
 
   if (manager === undefined) {
     console.log(definition);

@@ -937,6 +937,7 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler, Evented) 
     controller._qpDelegate = states.allowOverrides;
 
     if (transition) {
+      //debugger;
       // Update the model dep values used to calculate cache keys.
       stashParamNames(this._router, transition[STATE_SYMBOL]!.routeInfos);
 
@@ -1726,7 +1727,6 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler, Evented) 
     };
 
     console.log('_qp', result);
-    debugger;
 
     return result;
   }
@@ -2151,10 +2151,15 @@ Route.reopen({
 
       stashParamNames(router, routeInfos);
 
+      let presentKeys = new Set();
+      //debugger;
       for (let qp of qpMeta.qps) {
         let route = qp.route;
         let controller = route.controller;
         let presentKey = qp.urlKey in params && qp.urlKey;
+        if (presentKey) {
+          presentKeys.add(presentKey);
+        }
 
         // Do a reverse lookup to see if the changed query
         // param URL key corresponds to a QP property on
@@ -2183,7 +2188,7 @@ Route.reopen({
         controller._qpDelegate = (get(route, '_qp') as Route<T>['_qp']).states.inactive;
 
         let thisQueryParamChanged = svalue !== qp.serializedValue;
-        if (thisQueryParamChanged) {
+    if (thisQueryParamChanged) {
           if (transition.queryParamsOnly && replaceUrl !== false) {
             let options = route._optionsForQueryParam(qp);
             let replaceConfigValue = get(options, 'replace');
@@ -2204,12 +2209,22 @@ Route.reopen({
         qp.serializedValue = svalue;
 
         let thisQueryParamHasDefaultValue = qp.serializedDefaultValue === svalue;
-        if (!thisQueryParamHasDefaultValue) {
+        //if (!thisQueryParamHasDefaultValue) {
           finalParams.push({
             value: svalue,
             visible: true,
             key: presentKey || qp.urlKey,
           });
+        //}
+      }
+
+      for (let [key, value] of Object.entries(params)) {
+        if (!presentKeys.has(key)) {
+          finalParams.push({
+            key,
+            value,
+            visible: true
+          })
         }
       }
 

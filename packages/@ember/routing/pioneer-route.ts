@@ -4,6 +4,7 @@ import { getOwner, setOwner } from '@ember/-internals/owner';
 import { assert } from '@ember/debug';
 import EngineInstance from '@ember/engine/instance';
 import type { ExtendedInternalRouteInfo } from './route';
+import { registerDestructor } from '@glimmer/destroyable';
 
 
 export default class PioneerRoute {
@@ -58,10 +59,14 @@ export default class PioneerRoute {
   constructor(owner: Owner) {
     setOwner(this, owner);
     this._router = owner.lookup('router:main');
+    registerDestructor(this, () => this.willDestroy());
   }
 
   // eslint-disable-next-line disable-features/disable-async-await
   async load() {}
+
+  // eslint-disable-next-line disable-features/disable-async-await
+  async willDestroy() {}
 }
 
 setRouteManager((owner) => {

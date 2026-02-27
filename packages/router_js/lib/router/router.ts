@@ -440,7 +440,10 @@ export default abstract class Router<R extends Route> {
           route._internalReset(true, transition);
         }
 
-        if (route.exit !== undefined) {
+        let { manager, bucket } = this.getRouteManager(route);
+        if (manager && bucket) {
+          manager.exit(bucket);
+        } else if (route.exit !== undefined) {
           route.exit(transition);
         }
       }
@@ -663,6 +666,8 @@ export default abstract class Router<R extends Route> {
         urlMethod = null;
       }
     }
+
+    //debugger;
 
     if (urlMethod) {
       params.queryParams = transition._visibleQueryParams || state.queryParams;

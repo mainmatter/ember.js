@@ -25,7 +25,7 @@ export class ClassicRouteManager {
   }
 
   // Just an experiment, by no means final or even WIP
-  enterRoute({ instance }: ClassicRouteStateBucket) {
+  enter({ instance }: ClassicRouteStateBucket) {
     instance.beforeModel().then(() => {
       return instance.model();
     }).then(() => {

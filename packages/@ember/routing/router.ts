@@ -18,11 +18,11 @@ import { assert, info } from '@ember/debug';
 import { cancel, once, run, scheduleOnce } from '@ember/runloop';
 import { DEBUG } from '@glimmer/env';
 import {
-  type default as Route,
   defaultSerialize,
   getFullQueryParams,
   getRenderState,
   hasDefaultSerialize,
+  default as Route,
   type QueryParamMeta,
 } from '@ember/routing/route';
 import type {
@@ -45,7 +45,6 @@ import type { RouteStateBucket } from '../-internals/routing/route-managers/util
 import { getRouteManager } from '../-internals/routing/route-managers/utils';
 import type { RouteManager } from '@ember/-internals/routing';
 import PioneerRoute from './pioneer-route';
-import { OWNER } from '@glimmer/owner';
 
 /**
 @module @ember/routing/router
@@ -309,19 +308,25 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
 
   // WIP: Rough implementation of the Router instance keeping track of and managing instantiation of Routes
   #routeManagerInstances = new WeakMap<object, RouteManager<unknown>>(); // RouteManagers are always Singletons, we keep track of them here for now.
-  #routes = new Map<string, RouteStateBucket>(); // Routes are also Singletons, we keep track of them here for now.
+  #routes = new WeakMap<Route.constructor, RouteStateBucket>(); // Routes are also Singletons, we keep track of them here for now.
   getRoute(name: string) {
+    //debugger;
+    if (name === "undefined") {
+      return;
+    }
+
     const owner = getOwner(this);
     assert('BUG: Missing owner', owner);
     assert('Name should not start with "route:"', !name.startsWith('route:'));
     assert('Name should not be namespaced"', !name.includes(':'));
 
-    if (!this.#routes.has(name)) {
-      let factoryManager = owner.factoryFor(`route:${name}`);
-      assert('BUG: Missing factory for route', factoryManager);
+    let factoryManager = owner.factoryFor(`route:${name}`);
+    assert(`BUG: Missing factory for route: "${name}"`, factoryManager);
 
-      let factory = factoryManager.class;
+    let factory = factoryManager.class;
 
+    if (!this.#routes.has(factory)) {
+      console.log('creating fresh route instance for', name, factory);
       // Get and instantiate (if necessary) the applicable RouteManager implementation for this route.
       let routeManager = getRouteManager(factory);
       assert('Route manager needs to be defined', Boolean(routeManager));
@@ -330,13 +335,54 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
       }
       let routeManagerInstance = this.#routeManagerInstances.get(routeManager);
 
-      // Actual route instance & state. Not sure yet if we need anything other than the instance, but this mirrors other Manager implementations.
-      let routeStateBucket = routeManagerInstance?.createRoute(factoryManager, {});
-      assert('Failed to create Route instance', routeStateBucket.instance);
-      this.#routes.set(name, routeStateBucket as RouteStateBucket);
+      let bucket = routeManagerInstance?.createRoute(factoryManager, {}) as RouteStateBucket;
+      //debugger;
+      this.#routes.set(factory, bucket);
+    }
+    return this.#routes.get(factory)!.instance;
+
+    // old
+    // if (!this.#routes.has(name)) {
+    //   let factoryManager = owner.factoryFor(`route:${name}`);
+    //   assert('BUG: Missing factory for route', factoryManager);
+    //
+    //   let factory = factoryManager.class;
+    //
+    //   // Get and instantiate (if necessary) the applicable RouteManager implementation for this route.
+    //   let routeManager = getRouteManager(factory);
+    //   assert('Route manager needs to be defined', Boolean(routeManager));
+    //   if (!this.#routeManagerInstances.has(routeManager)) {
+    //     this.#routeManagerInstances.set(routeManager, routeManager?.(owner));
+    //   }
+    //   let routeManagerInstance = this.#routeManagerInstances.get(routeManager);
+    //
+    //   // Actual route instance & state. Not sure yet if we need anything other than the instance, but this mirrors other Manager implementations.
+    //   let routeStateBucket = routeManagerInstance?.createRoute(factoryManager, {});
+    //   assert('Failed to create Route instance', routeStateBucket.instance);
+    //   this.#routes.set(name, routeStateBucket as RouteStateBucket);
+    // }
+    //
+    // return this.#routes.get(name)!.instance;
+  }
+
+  getRouteManager(route: Route) {
+    let manager, bucket;
+
+    if (route instanceof PioneerRoute) {
+      manager = getRouteManager(route.constructor)();
+      bucket = this.#routes.get(route.constructor);
+    } else if (route.prototype?.isFunctional) {
+      debugger;
     }
 
-    return this.#routes.get(name)!.instance;
+    return {
+      manager,
+      bucket,
+    };
+  }
+
+  removeRoute(route: Route) {
+    this.#routes.delete(route.routeName);
   }
 
   getRouteBucket(name: string) {
@@ -349,6 +395,13 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
     const owner = getOwner(this);
     assert('Router is unexpectedly missing an owner', owner);
     let seen = Object.create(null);
+
+    let _getRouteManager = (route: Route) => {
+      return this.getRouteManager(route);
+    }
+    let _removeRoute = (route: Route) => {
+      this.removeRoute(route);
+    }
 
     class PrivateRouter extends Router<Route> {
       getRoute(name: string): Route {
@@ -368,13 +421,16 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
         assert('Route is unexpectedly missing an owner', routeOwner);
 
         let route = router.getRoute(routeName) as Route | undefined;
+        if (routeName === 'functional') {
+          //debugger;
+        }
         // if (route instanceof PioneerRoute) {
-          // route.beforeModel = () => {
-          //   console.log('enter called');
-          //   let bucket = router.getRouteBucket(routeName);
-          //   let manager = getRouteManager(PioneerRoute)();
-          //   return manager.enter(bucket);
-          // };
+        //   route.beforeModel = () => {
+        //     console.log('enter called');
+        //     let bucket = router.getRouteBucket(routeName);
+        //     let manager = getRouteManager(PioneerRoute)();
+        //     return manager.enter(bucket);
+        //   };
         // }
 
         if (seen[name]) {
@@ -398,6 +454,7 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
           }
         }
 
+        //debugger;
         route._setRouteName(routeName);
 
         if (engineInfo && !hasDefaultSerialize(route)) {
@@ -407,6 +464,14 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
         }
 
         return route;
+      }
+
+      getRouteManager(route: Route) {
+        return _getRouteManager(route);
+      }
+
+      removeRoute(route: Route) {
+        return _removeRoute(route);
       }
 
       getSerializer(name: string) {
@@ -421,6 +486,7 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
       }
 
       updateURL(path: string) {
+        console.log('UPDATE URL', path);
         once(() => {
           location.setURL(path);
           set(router, 'currentURL', path);
@@ -648,12 +714,18 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
     for (let routeInfo of routeInfos) {
       let route = routeInfo.route!;
       let render;
-      if (route instanceof PioneerRoute) {
+      if (route.definition?.class.prototype instanceof PioneerRoute) {
         let routeManager = getRouteManager(PioneerRoute)();
-        let bucket = this.#routes.get(route.routeName);
+        let bucket = this.#routes.get(route.definition.class);
+        assert(`Bucket is not defined for PioneerRoute ${route.routeName}`, Boolean(bucket));
         render = routeManager.getRenderState(bucket);
-      } else {
+      } else if (route instanceof Route) {
         render = getRenderState(route);
+      } else {
+        let functionalRouteManager = getRouteManager()();
+        let bucket = this.#routes.get(route.definition?.class);
+        render = functionalRouteManager.getRenderState(bucket);
+
       }
 
       if (render) {
@@ -724,6 +796,7 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
         // SAFETY: LOL. This is calling a deprecated API with a type that we
         // cannot actually confirm at a type level *is* a `ViewMixin`. Seems:
         // not great on multiple fronts!
+        // TODO: This actually causes the render/appends the tree to the dom
         instance.didCreateRootView(this._toplevelView as any);
       }
     } else {
@@ -1167,11 +1240,12 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
     _fromRouterService?: boolean
   ) {
     let state = calculatePostTransitionState(this, targetRouteName, models);
-    this._hydrateUnsuppliedQueryParams(state, queryParams, Boolean(_fromRouterService));
+    //this._hydrateUnsuppliedQueryParams(state, queryParams, Boolean(_fromRouterService));
+    //debugger;
     this._serializeQueryParams(state.routeInfos, queryParams);
 
     if (!_fromRouterService) {
-      this._pruneDefaultQueryParamValues(state.routeInfos, queryParams);
+      //this._pruneDefaultQueryParamValues(state.routeInfos, queryParams);
     }
   }
 

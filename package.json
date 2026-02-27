@@ -163,7 +163,8 @@
   "pnpm": {
     "overrides": {
       "rollup": "^4.2.0",
-      "ember-cli-htmlbars": "^7.0.0"
+      "ember-cli-htmlbars": "^7.0.0",
+      "router_js": "workspace:*"
     },
     "onlyBuiltDependencies": [
       "@swc/core",

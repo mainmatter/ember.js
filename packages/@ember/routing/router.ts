@@ -1,5 +1,6 @@
 import { privatize as P } from '@ember/-internals/container';
 import type { BootEnvironment, OutletState, OutletView } from '@ember/-internals/glimmer';
+import { getOwner as getInternalOwner } from '@ember/-internals/owner';
 import { computed, get, set } from '@ember/object';
 import type { default as Owner, FactoryManager } from '@ember/owner';
 import { getOwner } from '@ember/owner';
@@ -34,6 +35,7 @@ import {
   getRenderState,
   hasDefaultSerialize,
 } from '@ember/routing/route';
+import { getRouteManager } from '@ember/-internals/routing/route-managers/utils';
 import type {
   InternalRouteInfo,
   ModelFor,
@@ -359,6 +361,14 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
         }
 
         route._setRouteName(routeName);
+        // Look up the route manager and create a bucket.
+        // This activates the manager-driven code paths in router_js.
+        let manager = getRouteManager(route.constructor);
+        if (manager) {
+          let bucket = manager.createRoute(route, { name: routeName });
+          route.manager = manager as any;
+          route.bucket = bucket;
+        }
 
         if (engineInfo && !hasDefaultSerialize(route)) {
           throw new Error(
@@ -394,6 +404,10 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
           router.didTransition === defaultDidTransition
         );
         router.didTransition(infos);
+
+        // With route managers, [RENDER]() is skipped so we need to trigger
+        // _setOutlets after the transition completes to build the outlet tree.
+        scheduleOnce('afterRender', router, router._setOutlets);
       }
 
       // TODO: merge into routeWillChange
@@ -606,6 +620,25 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
     for (let routeInfo of routeInfos) {
       let route = routeInfo.route!;
       let render = getRenderState(route);
+
+      // When a route manager is present, [RENDER]() is skipped so
+      // getRenderState() returns undefined. Build the RenderState from
+      // the bucket and route info instead.
+      if (!render && route.manager) {
+        let bucket = route.bucket as { invokable?: object; context?: unknown } | undefined;
+        let template = routeInfo.invokable ?? bucket?.invokable;
+        if (template) {
+          let routeOwner = getInternalOwner(route);
+          assert('Route is unexpectedly missing an owner', routeOwner);
+          render = {
+            owner: routeOwner,
+            name: route.routeName,
+            controller: route.controller,
+            model: route.currentModel,
+            template,
+          };
+        }
+      }
 
       if (render) {
         let state: OutletState = {

@@ -434,15 +434,23 @@ export default abstract class Router<R extends Route> {
 
     for (i = 0, l = partition.exited.length; i < l; i++) {
       route = partition.exited[i]!.route;
-      delete route!.context;
 
       if (route !== undefined) {
-        if (route._internalReset !== undefined) {
-          route._internalReset(true, transition);
-        }
+        if (route.manager && route.bucket !== undefined) {
+          let args = { transition, isExiting: true };
+          route.manager.willExit(route.bucket, args);
+          route.manager.exit(route.bucket, args);
+        } else {
+          // No manager (migration period fallback) — call classic hooks directly
+          delete route.context;
 
-        if (route.exit !== undefined) {
-          route.exit(transition);
+          if (route._internalReset !== undefined) {
+            route._internalReset(true, transition);
+          }
+
+          if (route.exit !== undefined) {
+            route.exit(transition);
+          }
         }
       }
     }
@@ -455,7 +463,11 @@ export default abstract class Router<R extends Route> {
       for (i = 0, l = partition.reset.length; i < l; i++) {
         route = partition.reset[i]!.route;
         if (route !== undefined) {
-          if (route._internalReset !== undefined) {
+          if (route.manager && route.bucket !== undefined) {
+            // Reset (not exiting) — willExit with isExiting: false semantics
+            let args = { transition, isExiting: false };
+            route.manager.willExit(route.bucket, args);
+          } else if (route._internalReset !== undefined) {
             route._internalReset(false, transition);
           }
         }
@@ -522,6 +534,18 @@ export default abstract class Router<R extends Route> {
     let route = routeInfo.route,
       context = routeInfo.context;
 
+    function _routeEnteredOrUpdatedViaManager(route: R) {
+      // Pass transition and enter flag through args so the ClassicRouteManager
+      // can forward them to route.enter() and route.setup()
+      let args = { transition, enter };
+      route.manager!.didEnter(route.bucket, args);
+
+      throwIfAborted(transition);
+
+      currentRouteInfos.push(routeInfo);
+      return route;
+    }
+
     function _routeEnteredOrUpdated(route: R) {
       if (enter) {
         if (route.enter !== undefined) {
@@ -549,9 +573,18 @@ export default abstract class Router<R extends Route> {
 
     // If the route doesn't exist, it means we haven't resolved the route promise yet
     if (route === undefined) {
-      routeInfo.routePromise = routeInfo.routePromise.then(_routeEnteredOrUpdated);
+      routeInfo.routePromise = routeInfo.routePromise.then((route) => {
+        if (route.manager && route.bucket !== undefined) {
+          return _routeEnteredOrUpdatedViaManager(route);
+        }
+        return _routeEnteredOrUpdated(route);
+      });
     } else {
-      _routeEnteredOrUpdated(route);
+      if (route.manager && route.bucket !== undefined) {
+        _routeEnteredOrUpdatedViaManager(route);
+      } else {
+        _routeEnteredOrUpdated(route);
+      }
     }
 
     return true;

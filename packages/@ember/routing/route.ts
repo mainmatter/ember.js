@@ -958,7 +958,9 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler, Evented) 
 
     this.setupController(controller, context, transition);
 
-    if (this._environment.options.shouldRender) {
+    // When a route manager is present, rendering is driven by the router via
+    // getInvokable() — skip the classic [RENDER]() path.
+    if (this._environment.options.shouldRender && !getRouteManager(this.constructor)) {
       this[RENDER]();
     }
 
@@ -2230,3 +2232,12 @@ Route.reopen({
 });
 
 export default Route;
+
+// --- Wire the ClassicRouteManager on the Route base class ---
+// Every Route subclass inherits this via the prototype-walking lookup in getRouteManager.
+
+import { setRouteManager } from '@ember/-internals/routing/route-managers/utils';
+import { ClassicRouteManager } from '@ember/-internals/routing/route-managers/classic-route-manager';
+import { getRouteManager } from '@ember/-internals/routing';
+
+setRouteManager(() => new ClassicRouteManager(), Route);

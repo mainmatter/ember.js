@@ -68,7 +68,14 @@ function proceed<R extends Route>(
     // already-resolved route.
     let { route } = resolvedRouteInfo;
     if (route !== undefined) {
-      if (route.redirect) {
+      if (route.manager) {
+        // redirect is a classic-only hook, not part of the RouteManager interface.
+        // Non-classic managers redirect during enter() via the transition/cancel API.
+        if (route.manager.capabilities.classicInterop && route.redirect) {
+          route.redirect(resolvedRouteInfo.context, transition);
+        }
+      } else if (route.redirect) {
+        // No manager yet (migration period fallback) — call redirect directly
         route.redirect(resolvedRouteInfo.context, transition);
       }
     }

@@ -8,6 +8,7 @@ import type InternalTransition from './transition';
 import { isTransition, PARAMS_SYMBOL, prepareResult, QUERY_PARAMS_SYMBOL } from './transition';
 import { isParam, isPromise, merge } from './utils';
 import { throwIfAborted } from './transition-aborted-error';
+import type { RouteManager } from '@ember/-internals/routing';
 
 export type IModel = {} & {
   id?: string | number;
@@ -15,28 +16,9 @@ export type IModel = {} & {
 
 export type ModelFor<T> = T extends Route<infer V> ? V : never;
 
-/**
-  Minimal interface describing what router_js needs to know about a route manager.
-  The full `RouteManager` interface in Ember extends/satisfies this.
-  Defined locally to avoid a circular dependency from router_js into Ember.
-*/
-export interface RouteManagerLike<Bucket = unknown> {
-  capabilities: { classicInterop: boolean };
-
-  willEnter(bucket: Bucket, args: unknown): void;
-  enter(bucket: Bucket, args: unknown): Promise<unknown>;
-  didEnter(bucket: Bucket, args: unknown): void;
-
-  willExit(bucket: Bucket, args: unknown): void;
-  exit(bucket: Bucket, args: unknown): void;
-  didExit(bucket: Bucket, args: unknown): void;
-
-  getInvokable(bucket: Bucket): Promise<object | undefined>;
-}
-
 export interface Route<T = unknown> {
   // --- Route Manager fields (optional during migration) ---
-  manager?: RouteManagerLike;
+  manager?: RouteManager;
   bucket?: unknown;
 
   // --- Classic Route fields (removed once all call sites migrate) ---
@@ -274,49 +256,46 @@ export default class InternalRouteInfo<R extends Route> {
         return route;
       })
       .then((route) => {
-        // If the route has a manager, use the manager-driven resolve path.
-        // Otherwise fall through to the classic beforeModel → model → afterModel chain.
         if (route.manager && route.bucket !== undefined) {
           return this.resolveViaManager(route.manager, route.bucket, transition);
         }
 
+        // Fallback to the classic resolve path, makes the lazy-loaded
+        // route test pass for now until we can stabilize the manager-driven path and remove this
         return this.resolveViaClassicHooks(transition);
       });
   }
 
   /**
     Manager-driven resolve path. For managers with classicInterop, runs the
-    classic beforeModel → model → afterModel chain (since those hooks need
+    classic beforeModel -> model -> afterModel chain (since those hooks need
     access to the transition and route-info internals) but also calls
     getInvokable() concurrently. For non-classic managers, calls enter() and
     getInvokable() concurrently.
   */
   private resolveViaManager(
-    manager: RouteManagerLike,
+    manager: RouteManager,
     bucket: unknown,
     transition: InternalTransition<R>
   ): Promise<ResolvedRouteInfo<R>> {
     if (manager.capabilities.classicInterop) {
-      // Classic interop: run the classic hooks for model resolution,
-      // but also call getInvokable() concurrently for template lookup.
-      let classicResolve = this.runBeforeModelHook(transition)
+      // Classic interop: run the classic hooks chain with the exact same
+      // microtask structure as resolveViaClassicHooks (same number of .then()
+      // calls) to preserve transition timing. We want to use getInvokable here
+      // but was causing a bunch of microtask timing headaches, so we are letting
+      // [RENDER]() run for now
+      return this.runBeforeModelHook(transition)
         .then(() => throwIfAborted(transition))
         .then(() => this.getModel(transition))
         .then((resolvedModel) => {
           throwIfAborted(transition);
           return resolvedModel;
         })
-        .then((resolvedModel) => this.runAfterModelHook(transition, resolvedModel));
-
-      return Promise.all([classicResolve, manager.getInvokable(bucket)]).then(
-        ([resolvedModel, invokable]) => {
-          throwIfAborted(transition);
-          this.invokable = invokable;
-          // Store the resolved model on the bucket so didEnter() can access it
+        .then((resolvedModel) => this.runAfterModelHook(transition, resolvedModel))
+        .then((resolvedModel) => {
           (bucket as any).context = resolvedModel;
           return this.becomeResolved(transition, resolvedModel);
-        }
-      );
+        });
     }
 
     // Non-classic manager: enter() is the sole async entry point
@@ -333,8 +312,10 @@ export default class InternalRouteInfo<R extends Route> {
   }
 
   /**
-    Classic resolve path. Chains beforeModel → model → afterModel → becomeResolved.
-    This path is used when no RouteManager is present on the route object.
+    Classic resolve path. Chains beforeModel -> model -> afterModel -> becomeResolved.
+    This path is not used now, keeping it here just in case I need to fall back to it while
+    ironing out getInvokable() timing issues, but the plan is to remove this once the route manager
+    is proven.
   */
   private resolveViaClassicHooks(transition: InternalTransition<R>): Promise<ResolvedRouteInfo<R>> {
     return this.runBeforeModelHook(transition)

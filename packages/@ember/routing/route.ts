@@ -958,9 +958,9 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler, Evented) 
 
     this.setupController(controller, context, transition);
 
-    // When a route manager is present, rendering is driven by the router via
-    // getInvokable() — skip the classic [RENDER]() path.
-    if (this._environment.options.shouldRender && !getRouteManager(this.constructor)) {
+    // TODO: For non-classic managers, skip [RENDER]() and let the router
+    // handle rendering via getInvokable(). For now, always render.
+    if (this._environment.options.shouldRender) {
       this[RENDER]();
     }
 
@@ -2238,6 +2238,5 @@ export default Route;
 
 import { setRouteManager } from '@ember/-internals/routing/route-managers/utils';
 import { ClassicRouteManager } from '@ember/-internals/routing/route-managers/classic-route-manager';
-import { getRouteManager } from '@ember/-internals/routing';
 
 setRouteManager(() => new ClassicRouteManager(), Route);

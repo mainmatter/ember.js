@@ -442,6 +442,7 @@ export default abstract class Router<R extends Route> {
           route.manager.exit(route.bucket, args);
         } else {
           // No manager (migration period fallback) — call classic hooks directly
+          // I think some routes are created in tests that have no manager
           delete route.context;
 
           if (route._internalReset !== undefined) {
@@ -535,6 +536,15 @@ export default abstract class Router<R extends Route> {
       context = routeInfo.context;
 
     function _routeEnteredOrUpdatedViaManager(route: R) {
+      // Sync routeInfo.context -> bucket.context. This is necessary because
+      // intermediate transitions (error/loading substates) skip the resolve
+      // phase entirely — they go straight to setupContexts via
+      // intermediateTransitionTo -> applyToState(isIntermediate=true) ->
+      // becomeResolved() -> setupContexts. Since resolveViaManager() never
+      // runs, bucket.context is never set during resolve.
+      if (route.bucket !== undefined) {
+        (route.bucket as any).context = context;
+      }
       // Pass transition and enter flag through args so the ClassicRouteManager
       // can forward them to route.enter() and route.setup()
       let args = { transition, enter };

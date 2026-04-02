@@ -62,25 +62,10 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
     bucket: ClassicRouteBucket,
     _args: NavigationState & NavigationActions & AsyncNavigationState
   ): Promise<unknown> {
-    let route = bucket.route;
-
-    // The classic resolve chain: beforeModel -> model -> afterModel
-    // These are called from the router_js resolve phase via resolveViaClassicHooks().
-    //
-    // For the ClassicRouteManager, `enter()` is called from the manager-driven
-    // resolve path in route-info.ts. It runs the three classic hooks in sequence,
-    // checking for abort between each step.
-    //
-    // NOTE: In the current additive migration, the classic hooks are still called
-    // via resolveViaClassicHooks() in route-info.ts (the fallback path). Once all
-    // routes go through the manager, this method will be the sole entry point for
-    // the classic beforeModel/model/afterModel chain.
-    //
-    // For now, this returns the resolved model (context) and stores it on the bucket.
-    // The actual hook calls are handled by the resolveViaClassicHooks path since
-    // they need access to the transition and route-info internals.
-
-    // Return the already-resolved context from the bucket (set by resolveViaClassicHooks)
+    // Just returning the context here for now
+    // will want to handle the beforeModel -> model -> afterModel chain here once
+    // we have the getInvokable timing worked out, since those hooks need to run
+    // before we can resolve the invokable (template or component) for the route
     return Promise.resolve(bucket.context);
   }
 

@@ -360,7 +360,6 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
           }
         }
 
-        route._setRouteName(routeName);
         // Look up the route manager and create a bucket.
         // This activates the manager-driven code paths in router_js.
         let manager = getRouteManager(route.constructor);
@@ -368,6 +367,8 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
           let bucket = manager.createRoute(route, { name: routeName });
           route.manager = manager as any;
           route.bucket = bucket;
+        } else {
+          route._setRouteName(routeName);
         }
 
         if (engineInfo && !hasDefaultSerialize(route)) {
@@ -404,10 +405,6 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
           router.didTransition === defaultDidTransition
         );
         router.didTransition(infos);
-
-        // With route managers, [RENDER]() is skipped so we need to trigger
-        // _setOutlets after the transition completes to build the outlet tree.
-        scheduleOnce('afterRender', router, router._setOutlets);
       }
 
       // TODO: merge into routeWillChange

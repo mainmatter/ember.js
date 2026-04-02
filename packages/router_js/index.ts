@@ -13,7 +13,6 @@ export { default as TransitionState, TransitionError } from './lib/transition-st
 export {
   default as InternalRouteInfo,
   type Route,
-  type RouteManagerLike,
   type RouteInfo,
   type RouteInfoWithAttributes,
   type ModelFor,

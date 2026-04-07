@@ -15,6 +15,7 @@ import type {
 import { routeCapabilities } from './route-manager';
 import type { RouteStateBucket } from './utils';
 import { once } from '@ember/runloop';
+import { Promise } from 'rsvp';
 
 // --- Bucket ---
 

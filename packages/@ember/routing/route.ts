@@ -958,12 +958,6 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler, Evented) 
 
     this.setupController(controller, context, transition);
 
-    // TODO: For non-classic managers, skip [RENDER]() and let the router
-    // handle rendering via getInvokable(). For now, always render.
-    if (this._environment.options.shouldRender) {
-      this[RENDER]();
-    }
-
     // Setup can cause changes to QPs which need to be propogated immediately in
     // some situations. Eventually, we should work on making these async somehow.
     flushAsyncObservers(false);

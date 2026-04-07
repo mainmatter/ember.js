@@ -14,6 +14,7 @@ import type {
 } from './route-manager';
 import { routeCapabilities } from './route-manager';
 import type { RouteStateBucket } from './utils';
+import { once } from '@ember/runloop';
 
 // --- Bucket ---
 
@@ -21,6 +22,18 @@ export interface ClassicRouteBucket extends RouteStateBucket {
   route: Route;
   context: unknown;
   invokable: object | undefined;
+}
+
+// --- Classic interop args ---
+
+/**
+ * Extra args provided to manager methods when classicInterop is enabled.
+ * These give the ClassicRouteManager access to router_js internals needed
+ * to replicate the classic hook behaviour.
+ */
+export interface ClassicInteropArgs {
+  transition: any;
+  routeInfo: any;
 }
 
 // --- ClassicRouteManager ---
@@ -54,19 +67,100 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
 
   // --- Enter lifecycle ---
 
+  private _runBeforeModel(route: Route, transition: any): Promise<unknown> {
+    let result: unknown;
+    if (route.beforeModel !== undefined) {
+      result = route.beforeModel(transition);
+    }
+
+    if (this._isTransition(result)) {
+      result = null;
+    }
+
+    return Promise.resolve(result);
+  }
+
+  private _getModel(route: Route, routeInfo: any, transition: any): Promise<unknown> {
+    let fullParams = routeInfo.params || {};
+    if (transition.__QPS__) {
+      fullParams = { ...fullParams, queryParams: transition.__QPS__ };
+    }
+
+    let result: unknown;
+    if (route.deserialize) {
+      result = route.deserialize(fullParams, transition);
+    } else if (route.model) {
+      result = route.model(fullParams, transition);
+    }
+
+    if (this._isTransition(result)) {
+      result = null;
+    }
+
+    return Promise.resolve(result).then((resolvedModel) => {
+      let name = routeInfo.name;
+      transition.resolvedModels = transition.resolvedModels || {};
+      transition.resolvedModels[name] = resolvedModel;
+      return resolvedModel;
+    });
+  }
+
+  private _runAfterModel(route: Route, resolvedModel: unknown, transition: any): Promise<unknown> {
+    let name = route.routeName || route._internalName;
+    transition.resolvedModels = transition.resolvedModels || {};
+    transition.resolvedModels[name] = resolvedModel;
+
+    let result: unknown;
+    if (route.afterModel !== undefined) {
+      result = route.afterModel(resolvedModel, transition);
+    }
+
+    result = this._isTransition(result) ? null : result;
+
+    return Promise.resolve(result).then(() => {
+      return transition.resolvedModels[name];
+    });
+  }
+
+  private _isTransition(obj: unknown): boolean {
+    return typeof obj === 'object' && obj !== null && (obj as any).isTransition === true;
+  }
+
   willEnter(_bucket: ClassicRouteBucket, _args: NavigationState & NavigationActions): void {
     // No-op for classic routes
   }
 
   enter(
     bucket: ClassicRouteBucket,
-    _args: NavigationState & NavigationActions & AsyncNavigationState
+    args: NavigationState & NavigationActions & AsyncNavigationState & ClassicInteropArgs
   ): Promise<unknown> {
-    // Just returning the context here for now
-    // will want to handle the beforeModel -> model -> afterModel chain here once
-    // we have the getInvokable timing worked out, since those hooks need to run
-    // before we can resolve the invokable (template or component) for the route
-    return Promise.resolve(bucket.context);
+    let route = bucket.route;
+    let transition = args.transition;
+    let routeInfo = args.routeInfo;
+
+    if (transition.trigger) {
+      transition.trigger(true, 'willResolveModel', transition, route);
+    }
+
+    return this._runBeforeModel(route, transition)
+      .then(() => {
+        if (transition.isAborted) {
+          throw transition.error;
+        }
+      })
+      .then(() => this._getModel(route, routeInfo, transition))
+      .then((resolvedModel) => {
+        if (transition.isAborted) {
+          throw transition.error;
+        }
+        return resolvedModel;
+      })
+      .then((resolvedModel) => this._runAfterModel(route, resolvedModel, transition))
+      .then((resolvedModel) => {
+        (bucket as any).context = resolvedModel;
+
+        return resolvedModel;
+      });
   }
 
   didEnter(bucket: ClassicRouteBucket, _args: NavigationState): void {
@@ -83,10 +177,15 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
 
     // Set the resolved context on the route object
     route.context = context;
-    route.contextDidChange();
+    if (route.contextDidChange !== undefined) {
+      route.contextDidChange();
+    }
 
-    // Run setup (controller wiring, QP handling, rendering)
-    route.setup(context, transition);
+    if (route.setup !== undefined) {
+      route.setup(context, transition!);
+    }
+
+    once(route._router, '_setOutlets');
   }
 
   // --- Exit lifecycle ---

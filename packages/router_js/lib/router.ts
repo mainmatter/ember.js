@@ -545,6 +545,19 @@ export default abstract class Router<R extends Route> {
       if (route.bucket !== undefined) {
         (route.bucket as any).context = context;
       }
+      // For intermediate transitions, getInvokable() was never called during
+      // resolve. Call it now so the template can be found for rendering.
+      // ClassicRouteManager.getInvokable() returns a synchronously resolved
+      // promise, so the invokable is available by the time didEnter runs setup()
+      // which schedules _setOutlets.
+      if (routeInfo.invokable === undefined && route.manager) {
+        route.manager.getInvokable(route.bucket).then((invokable: any) => {
+          routeInfo.invokable = invokable;
+          if (route.bucket) {
+            (route.bucket as any).invokable = invokable;
+          }
+        });
+      }
       // Pass transition and enter flag through args so the ClassicRouteManager
       // can forward them to route.enter() and route.setup()
       let args = { transition, enter };

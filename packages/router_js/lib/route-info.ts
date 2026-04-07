@@ -267,48 +267,26 @@ export default class InternalRouteInfo<R extends Route> {
   }
 
   /**
-    Manager-driven resolve path. For managers with classicInterop, runs the
-    classic beforeModel -> model -> afterModel chain (since those hooks need
-    access to the transition and route-info internals) but also calls
-    getInvokable() concurrently. For non-classic managers, calls enter() and
-    getInvokable() concurrently.
+    Manager-driven resolve path. Calls enter() and getInvokable() concurrently.
+    For classicInterop managers, enter() runs the beforeModel → model → afterModel chain.
+    For non-classic managers, enter() is the sole async entry point.
   */
   private resolveViaManager(
     manager: RouteManager,
     bucket: unknown,
     transition: InternalTransition<R>
   ): Promise<ResolvedRouteInfo<R>> {
-    if (manager.capabilities.classicInterop) {
-      // Classic interop: run the classic hooks chain with the exact same
-      // microtask structure as resolveViaClassicHooks (same number of .then()
-      // calls) to preserve transition timing. We want to use getInvokable here
-      // but was causing a bunch of microtask timing headaches, so we are letting
-      // [RENDER]() run for now
-      return this.runBeforeModelHook(transition)
-        .then(() => throwIfAborted(transition))
-        .then(() => this.getModel(transition))
-        .then((resolvedModel) => {
-          throwIfAborted(transition);
-          return resolvedModel;
-        })
-        .then((resolvedModel) => this.runAfterModelHook(transition, resolvedModel))
-        .then((resolvedModel) => {
-          (bucket as any).context = resolvedModel;
-          return this.becomeResolved(transition, resolvedModel);
-        });
-    }
-
-    // Non-classic manager: enter() is the sole async entry point
-    // TODO: Build proper NavigationState & NavigationActions args from the transition
-    let args = {};
-
-    return Promise.all([manager.enter(bucket, args), manager.getInvokable(bucket)]).then(
-      ([resolvedModel, invokable]) => {
-        throwIfAborted(transition);
-        this.invokable = invokable;
-        return this.becomeResolved(transition, resolvedModel as ModelFor<R>);
-      }
-    );
+    return Promise.all([
+      manager.enter(bucket, {
+        transition,
+        routeInfo: this,
+      }),
+      manager.getInvokable(bucket),
+    ]).then(([resolvedModel, invokable]) => {
+      throwIfAborted(transition);
+      this.invokable = invokable;
+      return this.becomeResolved(transition, resolvedModel as ModelFor<R>);
+    });
   }
 
   /**

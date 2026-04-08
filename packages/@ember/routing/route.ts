@@ -1458,7 +1458,9 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler, Evented) 
     @method teardownViews
   */
   teardownViews() {
-    once(this._router, '_setOutlets');
+    if (this._router) {
+      once(this._router, '_setOutlets');
+    }
   }
 
   /**

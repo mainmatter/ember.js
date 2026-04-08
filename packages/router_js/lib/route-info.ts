@@ -5,7 +5,7 @@ import type { SerializerFunc } from './router';
 import type Router from './router';
 import type { PublicTransition as Transition } from './transition';
 import type InternalTransition from './transition';
-import { isTransition, PARAMS_SYMBOL, prepareResult, QUERY_PARAMS_SYMBOL } from './transition';
+import { isTransition, PARAMS_SYMBOL, QUERY_PARAMS_SYMBOL } from './transition';
 import { isParam, isPromise, merge } from './utils';
 import { throwIfAborted } from './transition-aborted-error';
 import type { RouteManager } from '@ember/-internals/routing';
@@ -256,13 +256,7 @@ export default class InternalRouteInfo<R extends Route> {
         return route;
       })
       .then((route) => {
-        if (route.manager && route.bucket !== undefined) {
-          return this.resolveViaManager(route.manager, route.bucket, transition);
-        }
-
-        // Fallback to the classic resolve path, makes the lazy-loaded
-        // route test pass for now until we can stabilize the manager-driven path and remove this
-        return this.resolveViaClassicHooks(transition);
+        return this.resolveViaManager(route.manager, route.bucket, transition);
       });
   }
 
@@ -287,24 +281,6 @@ export default class InternalRouteInfo<R extends Route> {
       this.invokable = invokable;
       return this.becomeResolved(transition, resolvedModel as ModelFor<R>);
     });
-  }
-
-  /**
-    Classic resolve path. Chains beforeModel -> model -> afterModel -> becomeResolved.
-    This path is not used now, keeping it here just in case I need to fall back to it while
-    ironing out getInvokable() timing issues, but the plan is to remove this once the route manager
-    is proven.
-  */
-  private resolveViaClassicHooks(transition: InternalTransition<R>): Promise<ResolvedRouteInfo<R>> {
-    return this.runBeforeModelHook(transition)
-      .then(() => throwIfAborted(transition))
-      .then(() => this.getModel(transition))
-      .then((resolvedModel) => {
-        throwIfAborted(transition);
-        return resolvedModel;
-      })
-      .then((resolvedModel) => this.runAfterModelHook(transition, resolvedModel))
-      .then((resolvedModel) => this.becomeResolved(transition, resolvedModel));
   }
 
   becomeResolved(
@@ -404,53 +380,6 @@ export default class InternalRouteInfo<R extends Route> {
   private updateRoute(route: R) {
     route._internalName = this.name;
     return (this.route = route);
-  }
-
-  private runBeforeModelHook(transition: InternalTransition<R>) {
-    if (transition.trigger) {
-      transition.trigger(true, 'willResolveModel', transition, this.route);
-    }
-
-    let result;
-    if (this.route) {
-      if (this.route.beforeModel !== undefined) {
-        result = this.route.beforeModel(transition);
-      }
-    }
-
-    if (isTransition(result)) {
-      result = null;
-    }
-
-    return Promise.resolve(result);
-  }
-
-  private runAfterModelHook(
-    transition: InternalTransition<R>,
-    resolvedModel?: ModelFor<R> | null
-  ): Promise<ModelFor<R>> {
-    // Stash the resolved model on the payload.
-    // This makes it possible for users to swap out
-    // the resolved model in afterModel.
-    let name = this.name;
-    this.stashResolvedModel(transition, resolvedModel!);
-
-    let result;
-    if (this.route !== undefined) {
-      if (this.route.afterModel !== undefined) {
-        result = this.route.afterModel(resolvedModel!, transition);
-      }
-    }
-
-    result = prepareResult(result);
-
-    return Promise.resolve(result).then(() => {
-      // Ignore the fulfilled value returned from afterModel.
-      // Return the value stashed in resolvedModels, which
-      // might have been swapped out in afterModel.
-      // SAFTEY: We expect this to be of type T, though typing it as such is challenging.
-      return transition.resolvedModels[name]! as unknown as ModelFor<R>;
-    });
   }
 
   private stashResolvedModel(

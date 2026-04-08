@@ -436,23 +436,9 @@ export default abstract class Router<R extends Route> {
       route = partition.exited[i]!.route;
 
       if (route !== undefined) {
-        if (route.manager && route.bucket !== undefined) {
-          let args = { transition, isExiting: true };
-          route.manager.willExit(route.bucket, args);
-          route.manager.exit(route.bucket, args);
-        } else {
-          // No manager (migration period fallback) — call classic hooks directly
-          // I think some routes are created in tests that have no manager
-          delete route.context;
-
-          if (route._internalReset !== undefined) {
-            route._internalReset(true, transition);
-          }
-
-          if (route.exit !== undefined) {
-            route.exit(transition);
-          }
-        }
+        let args = { transition, isExiting: true };
+        route.manager.willExit(route.bucket, args);
+        route.manager.exit(route.bucket, args);
       }
     }
 

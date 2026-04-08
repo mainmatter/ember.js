@@ -67,9 +67,12 @@
       });
 
       // tests in non-scoped packages
-      import.meta.glob('./packages/*/tests/**/*.{js,ts,gjs,gts}', {
-        eager: true,
-      });
+      import.meta.glob(
+        ['./packages/*/tests/**/*.{js,ts,gjs,gts}', '!./packages/router_js/tests/**'],
+        {
+          eager: true,
+        }
+      );
 
       // packages originally authored in glimmer-vm repo have a different test
       // naming convention

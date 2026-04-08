@@ -32,7 +32,6 @@ import {
   type default as Route,
   defaultSerialize,
   getFullQueryParams,
-  getRenderState,
   hasDefaultSerialize,
 } from '@ember/routing/route';
 import { getRouteManager } from '@ember/-internals/routing/route-managers/utils';
@@ -363,13 +362,9 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
         // Look up the route manager and create a bucket.
         // This activates the manager-driven code paths in router_js.
         let manager = getRouteManager(route.constructor);
-        if (manager) {
-          let bucket = manager.createRoute(route, { name: routeName });
-          route.manager = manager as any;
-          route.bucket = bucket;
-        } else {
-          route._setRouteName(routeName);
-        }
+        let bucket = manager.createRoute(route, { name: routeName });
+        route.manager = manager as any;
+        route.bucket = bucket;
 
         if (engineInfo && !hasDefaultSerialize(route)) {
           throw new Error(
@@ -615,51 +610,40 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
     let parent: OutletState | null = null;
 
     for (let routeInfo of routeInfos) {
-      let route = routeInfo.route!;
-      let render = getRenderState(route);
+      let route = routeInfo.route;
+      assert('RouteInfo should have route', route);
 
-      // When a route manager is present, [RENDER]() is skipped so
-      // getRenderState() returns undefined. Build the RenderState from
-      // the bucket and route info instead.
-      if (!render && route.manager) {
-        let bucket = route.bucket as { invokable?: object; context?: unknown } | undefined;
-        let template = routeInfo.invokable ?? bucket?.invokable;
-        if (template) {
-          let routeOwner = getInternalOwner(route);
-          assert('Route is unexpectedly missing an owner', routeOwner);
-          render = {
-            owner: routeOwner,
-            name: route.routeName,
-            controller: route.controller,
-            model: route.currentModel,
-            template,
-          };
-        }
-      }
+      let bucket = route.bucket as { invokable?: object; context?: unknown } | undefined;
+      let template = routeInfo.invokable ?? bucket?.invokable;
 
-      if (render) {
-        let state: OutletState = {
-          render,
-          outlets: {
-            main: undefined,
-          },
-        };
+      assert('Expected route to have an invokable template or component', template !== undefined);
 
-        if (parent) {
-          parent.outlets.main = state;
-        } else {
-          root = state;
-        }
+      let routeOwner = getInternalOwner(route);
 
-        parent = state;
+      assert('Route is unexpectedly missing an owner', routeOwner);
+
+      let render = {
+        owner: routeOwner,
+        name: route.routeName,
+        controller: route.controller,
+        model: route.currentModel,
+        template,
+      };
+
+      let state: OutletState = {
+        render,
+        outlets: {
+          main: undefined,
+        },
+      };
+
+      if (parent) {
+        parent.outlets.main = state;
       } else {
-        // It used to be that we would create a stub entry and keep traversing,
-        // but I don't think that is necessary anymore – if a parent route did
-        // not render, then the child routes have nowhere to render into these
-        // days. That wasn't always the case since in the past any route can
-        // render into any other route's outlets.
-        break;
+        root = state;
       }
+
+      parent = state;
     }
 
     // when a transitionTo happens after the validation phase

@@ -17,14 +17,10 @@ import { isProxy, lookupDescriptor } from '@ember/-internals/utils';
 import type { AnyFn } from '@ember/-internals/utility-types';
 import Controller from '@ember/controller';
 import type { ControllerQueryParamType } from '@ember/controller';
-import { assert, info, isTesting } from '@ember/debug';
+import { assert, isTesting } from '@ember/debug';
 import EngineInstance from '@ember/engine/instance';
 import { dependentKeyCompat } from '@ember/object/compat';
 import { once } from '@ember/runloop';
-import { DEBUG } from '@glimmer/env';
-import { hasInternalComponentManager } from '@glimmer/manager';
-import type { RenderState } from '@ember/-internals/glimmer';
-import type { TemplateFactory } from '@glimmer/interfaces';
 import type { InternalRouteInfo, Route as IRoute, Transition, TransitionState } from 'router_js';
 import { PARAMS_SYMBOL, STATE_SYMBOL } from 'router_js';
 import type { QueryParam, default as EmberRouter } from '@ember/routing/router';
@@ -59,9 +55,6 @@ type RouteTransitionState = TransitionState<Route> & {
 
 type MaybeParameters<T> = T extends AnyFn ? Parameters<T> : unknown[];
 type MaybeReturnType<T> = T extends AnyFn ? ReturnType<T> : unknown;
-
-const RENDER = Symbol('render');
-const RENDER_STATE = Symbol('render-state');
 
 /**
 @module @ember/routing/route
@@ -793,7 +786,6 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler, Evented) 
     @method enter
   */
   enter(transition: Transition) {
-    this[RENDER_STATE] = undefined;
     this.activate(transition);
     this.trigger('activate', transition);
   }
@@ -1456,18 +1448,6 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler, Evented) 
     return route?.currentModel;
   }
 
-  [RENDER_STATE]: RenderState | undefined = undefined;
-
-  /**
-    `this[RENDER]` is used to set up the rendering option for the outlet state.
-    @method this[RENDER]
-    @private
-   */
-  [RENDER]() {
-    this[RENDER_STATE] = buildRenderState(this);
-    once(this._router, '_setOutlets');
-  }
-
   willDestroy() {
     this.teardownViews();
   }
@@ -1478,10 +1458,7 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler, Evented) 
     @method teardownViews
   */
   teardownViews() {
-    if (this[RENDER_STATE]) {
-      this[RENDER_STATE] = undefined;
-      once(this._router, '_setOutlets');
-    }
+    once(this._router, '_setOutlets');
   }
 
   /**
@@ -1780,97 +1757,6 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler, Evented) 
   ) => MaybeReturnType<
     K extends keyof this ? this[K] : K extends keyof this['actions'] ? this['actions'][K] : never
   >;
-}
-
-export function getRenderState(route: Route): RenderState | undefined {
-  return route[RENDER_STATE];
-}
-
-function buildRenderState(route: Route): RenderState {
-  let owner = getOwner(route);
-  assert('Route is unexpectedly missing an owner', owner);
-
-  let name = route.routeName;
-
-  let controller = owner.lookup(`controller:${route.controllerName || name}`);
-  assert('Expected an instance of controller', controller instanceof Controller);
-
-  let model = route.currentModel;
-
-  let templateFactoryOrComponent = owner.lookup(`template:${route.templateName || name}`) as
-    | TemplateFactory
-    | object // This is meant to be a component
-    | undefined;
-
-  // Now we support either a component or a template to be returned by this
-  // resolver call, but if it's a `TemplateFactory`, we need to instantiate
-  // it into a `Template`, since that's what `RenderState` wants. We can't
-  // easily change it, it's intimate API used by @ember/test-helpers and the
-  // like. We could compatibly allow `Template` | `TemplateFactory`, and that's
-  // what it used to do but we _just_ went through deprecations to get that
-  // removed. It's also not ideal since once you mix the two types, they are
-  // not exactly easy to tell apart.
-  //
-  // It may also be tempting to just normalize `Template` into `RouteTemplate`
-  // here, and we could. However, this is not the only entrypoint where this
-  // `RenderState` is made – @ember/test-helpers punches through an impressive
-  // amount of private API to set it directly, and this feature would also be
-  // useful for them. So, even if we had normalized here, we'd still have to
-  // check and do that again during render anyway.
-  let template: object;
-
-  if (templateFactoryOrComponent) {
-    if (hasInternalComponentManager(templateFactoryOrComponent)) {
-      template = templateFactoryOrComponent;
-    } else {
-      if (DEBUG && typeof templateFactoryOrComponent !== 'function') {
-        let label: string;
-
-        try {
-          label = `\`${String(templateFactoryOrComponent)}\``;
-        } catch {
-          label = 'an unknown object';
-        }
-
-        assert(
-          `Failed to render the ${name} route, expected ` +
-            `\`template:${route.templateName || name}\` to resolve into ` +
-            `a component or a \`TemplateFactory\`, got: ${label}. ` +
-            `Most likely an improperly defined class or an invalid module export.`
-        );
-      }
-
-      template = (templateFactoryOrComponent as TemplateFactory)(owner);
-    }
-  } else {
-    // default `{{outlet}}`
-    template = route._topLevelViewTemplate(owner);
-  }
-
-  let render: RenderState = {
-    owner,
-    name,
-    controller,
-    model,
-    template,
-  };
-
-  if (DEBUG) {
-    let LOG_VIEW_LOOKUPS = get(route._router, 'namespace.LOG_VIEW_LOOKUPS');
-    // This is covered by tests and the existing code was deliberately
-    // targeting the value prior to normalization, but is this message actually
-    // accurate? It seems like we will always default the `{{outlet}}` template
-    // so I'm not sure about "Nothing will be rendered?" (who consumes these
-    // logs anyway? as lookups happen more infrequently now I doubt this is all
-    // that useful)
-    if (LOG_VIEW_LOOKUPS && !templateFactoryOrComponent) {
-      info(`Could not find "${name}" template. Nothing will be rendered`, {
-        fullName: `template:${name}`,
-      });
-    }
-  }
-
-  return render;
 }
 
 export function getFullQueryParams(router: EmberRouter, state: RouteTransitionState) {

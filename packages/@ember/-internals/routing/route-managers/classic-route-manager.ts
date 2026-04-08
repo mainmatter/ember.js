@@ -1,5 +1,6 @@
 import { getOwner } from '@ember/-internals/owner';
-import { assert } from '@ember/debug';
+import { assert, info } from '@ember/debug';
+import { get } from '@ember/-internals/metal';
 import { DEBUG } from '@glimmer/env';
 import { hasInternalComponentManager } from '@glimmer/manager';
 import type { Destroyable, TemplateFactory } from '@glimmer/interfaces';
@@ -81,24 +82,12 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
     return Promise.resolve(result);
   }
 
-  private _getModel(route: Route, routeInfo: any, transition: any): Promise<unknown> {
-    let fullParams = routeInfo.params || {};
-    if (transition.__QPS__) {
-      fullParams = { ...fullParams, queryParams: transition.__QPS__ };
-    }
-
-    let result: unknown;
-    if (route.deserialize) {
-      result = route.deserialize(fullParams, transition);
-    } else if (route.model) {
-      result = route.model(fullParams, transition);
-    }
-
-    if (this._isTransition(result)) {
-      result = null;
-    }
-
-    return Promise.resolve(result).then((resolvedModel) => {
+  private _getModel(routeInfo: any, transition: any): Promise<unknown> {
+    // Delegate to routeInfo.getModel() for polymorphic dispatch:
+    // - UnresolvedRouteInfoByParam calls route.deserialize/model with URL params
+    // - UnresolvedRouteInfoByObject returns the pre-provided model object directly
+    // This is critical when transitionTo() is called with a model object rather than URL params.
+    return Promise.resolve(routeInfo.getModel(transition)).then((resolvedModel: unknown) => {
       let name = routeInfo.name;
       transition.resolvedModels = transition.resolvedModels || {};
       transition.resolvedModels[name] = resolvedModel;
@@ -143,25 +132,28 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
       transition.trigger(true, 'willResolveModel', transition, route);
     }
 
-    return this._runBeforeModel(route, transition)
-      .then(() => {
-        if (transition.isAborted) {
-          throw transition.error;
-        }
-      })
-      .then(() => this._getModel(route, routeInfo, transition))
-      .then((resolvedModel) => {
-        if (transition.isAborted) {
-          throw transition.error;
-        }
-        return resolvedModel;
-      })
-      .then((resolvedModel) => this._runAfterModel(route, resolvedModel, transition))
-      .then((resolvedModel) => {
-        (bucket as any).context = resolvedModel;
+    return (
+      this._runBeforeModel(route, transition)
+        .then(() => {
+          if (transition.isAborted) {
+            throw transition.error;
+          }
+        })
+        .then(() => this._getModel(routeInfo, transition))
+        // _getModel uses routeInfo.getModel() for polymorphic dispatch
+        .then((resolvedModel) => {
+          if (transition.isAborted) {
+            throw transition.error;
+          }
+          return resolvedModel;
+        })
+        .then((resolvedModel) => this._runAfterModel(route, resolvedModel, transition))
+        .then((resolvedModel) => {
+          (bucket as any).context = resolvedModel;
 
-        return resolvedModel;
-      });
+          return resolvedModel;
+        })
+    );
   }
 
   didEnter(bucket: ClassicRouteBucket, _args: NavigationState): void {
@@ -186,7 +178,9 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
       route.setup(context, transition!);
     }
 
-    once(route._router, '_setOutlets');
+    if (route._environment?.options?.shouldRender !== false) {
+      once(route._router, '_setOutlets');
+    }
   }
 
   // --- Exit lifecycle ---
@@ -252,6 +246,14 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
         template = (templateFactoryOrComponent as TemplateFactory)(owner);
       }
     } else {
+      if (DEBUG) {
+        let LOG_VIEW_LOOKUPS = get(route._router, 'namespace.LOG_VIEW_LOOKUPS');
+        if (LOG_VIEW_LOOKUPS) {
+          info(`Could not find "${name}" template. Nothing will be rendered`, {
+            fullName: `template:${name}`,
+          });
+        }
+      }
       // Default {{outlet}} template
       template = route._topLevelViewTemplate(owner);
     }

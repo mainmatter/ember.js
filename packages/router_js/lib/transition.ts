@@ -71,6 +71,7 @@ export default class Transition<R extends Route> implements Partial<Promise<R>> 
   _visibleQueryParams: Dict<unknown> = {};
   isIntermediate = false;
   [REDIRECT_DESTINATION_SYMBOL]?: Transition<R>;
+  signal?: AbortSignal;
 
   /**
     In non-production builds, this function will return the stack that this Transition was

@@ -34,7 +34,7 @@ import {
   getFullQueryParams,
   hasDefaultSerialize,
 } from '@ember/routing/route';
-import { getRouteManager } from '@ember/-internals/routing/route-managers/utils';
+import { getRouteManager } from '@ember/-internals/routing';
 import type {
   InternalRouteInfo,
   ModelFor,
@@ -362,8 +362,12 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
         // Look up the route manager and create a bucket.
         // This activates the manager-driven code paths in router_js.
         let manager = getRouteManager(route.constructor);
+        assert(`Route ${fullRouteName} does not have a manager`, manager);
+
         let bucket = manager.createRoute(route, { name: routeName });
-        route.manager = manager as any;
+        route.manager = manager;
+
+        assert('Route manager should return a bucket', bucket);
         route.bucket = bucket;
 
         if (engineInfo && !hasDefaultSerialize(route)) {

@@ -12,6 +12,7 @@ import type {
   NavigationActions,
   AsyncNavigationState,
   CreateRouteArgs,
+  NavigationStateWithTransition,
 } from './route-manager';
 import { routeCapabilities } from './route-manager';
 import type { RouteStateBucket } from './utils';
@@ -122,11 +123,11 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
 
   enter(
     bucket: ClassicRouteBucket,
-    args: NavigationState & NavigationActions & AsyncNavigationState & ClassicInteropArgs
+    args: NavigationState & NavigationActions & AsyncNavigationState & NavigationStateWithTransition
   ): Promise<unknown> {
     let route = bucket.route;
     let transition = args.transition;
-    let routeInfo = args.routeInfo;
+    let routeInfo = args.to;
 
     if (transition.trigger) {
       transition.trigger(true, 'willResolveModel', transition, route);
@@ -165,7 +166,8 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
 
     // Classic enter: activate + trigger 'activate' (only on fresh enter, not updates)
     if (enter) {
-      route.enter(transition);
+      route.activate(transition);
+      route.trigger('activate', transition);
     }
 
     // Set the resolved context on the route object
@@ -198,7 +200,9 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
     let route = bucket.route;
     let transition = (_args as any).transition;
     delete route.context;
-    route.exit(transition);
+    route.deactivate(transition);
+    route.trigger('deactivate', transition);
+    route.teardownViews();
   }
 
   didExit(_bucket: ClassicRouteBucket, _args: NavigationState): void {

@@ -1,6 +1,7 @@
 import type { Capabilities, Destroyable } from '@glimmer/interfaces';
 import type { RouteStateBucket } from './utils';
 import type { RouteInfo } from '@ember/routing/-internals';
+import type Transition from '../../../routing/transition';
 
 // --- Capabilities ---
 
@@ -43,10 +44,14 @@ export interface NavigationActions {
 
 export interface AsyncNavigationState {
   /** Signal for the current navigation */
-  signal: AbortSignal;
+  signal?: AbortSignal;
 
   /** Retrieve the ancestor promise for an ancestor route, to await async ancestor behaviour. */
   getAncestorPromise(routeInfo: RouteInfo): ReturnType<RouteManager<RouteStateBucket>['enter']>;
+}
+
+export interface NavigationStateWithTransition extends NavigationState {
+  transition: Transition;
 }
 
 export interface CreateRouteArgs {
@@ -64,7 +69,7 @@ export interface RouteManager<R extends RouteStateBucket> {
   willEnter(bucket: R, args: NavigationState & NavigationActions): void;
   enter(
     bucket: R,
-    args: NavigationState & NavigationActions & AsyncNavigationState
+    args: NavigationState & NavigationActions & AsyncNavigationState & NavigationStateWithTransition
   ): Promise<unknown>;
   didEnter(bucket: R, args: NavigationState): void;
 

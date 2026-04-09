@@ -8,7 +8,7 @@ import type InternalTransition from './transition';
 import { isTransition, PARAMS_SYMBOL, QUERY_PARAMS_SYMBOL } from './transition';
 import { isParam, isPromise, merge } from './utils';
 import { throwIfAborted } from './transition-aborted-error';
-import type { RouteManager } from '@ember/-internals/routing';
+import type { RouteManager, RouteStateBucket } from '@ember/-internals/routing';
 
 export type IModel = {} & {
   id?: string | number;
@@ -18,8 +18,8 @@ export type ModelFor<T> = T extends Route<infer V> ? V : never;
 
 export interface Route<T = unknown> {
   // --- Route Manager fields (optional during migration) ---
-  manager?: RouteManager;
-  bucket?: unknown;
+  manager: RouteManager<RouteStateBucket>;
+  bucket: RouteStateBucket;
 
   // --- Classic Route fields (removed once all call sites migrate) ---
   inaccessibleByURL?: boolean;
@@ -266,14 +266,26 @@ export default class InternalRouteInfo<R extends Route> {
     For non-classic managers, enter() is the sole async entry point.
   */
   private resolveViaManager(
-    manager: RouteManager,
-    bucket: unknown,
+    manager: RouteManager<RouteStateBucket>,
+    bucket: RouteStateBucket,
     transition: InternalTransition<R>
   ): Promise<ResolvedRouteInfo<R>> {
     return Promise.all([
       manager.enter(bucket, {
         transition,
-        routeInfo: this,
+        to: this as unknown as RouteInfo, // will need to rethink this
+        cancel() {
+          transition.abort();
+        },
+        signal: transition.isTransition ? transition.signal : undefined,
+        getAncestorPromise: (routeInfo) => {
+          let index = transition.routeInfos.indexOf(routeInfo as unknown as InternalRouteInfo<R>);
+          if (index === -1) {
+            return Promise.reject(new Error('RouteInfo not found in transition'));
+          }
+          let ancestorRouteInfo = transition.routeInfos[index];
+          return Promise.resolve(ancestorRouteInfo?.routePromise);
+        },
       }),
       manager.getInvokable(bucket),
     ]).then(([resolvedModel, invokable]) => {

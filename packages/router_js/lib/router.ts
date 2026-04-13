@@ -555,45 +555,13 @@ export default abstract class Router<R extends Route> {
       return route;
     }
 
-    function _routeEnteredOrUpdated(route: R) {
-      if (enter) {
-        if (route.enter !== undefined) {
-          route.enter(transition!);
-        }
-      }
-
-      throwIfAborted(transition);
-
-      route.context = context as Awaited<typeof context>;
-
-      if (route.contextDidChange !== undefined) {
-        route.contextDidChange();
-      }
-
-      if (route.setup !== undefined) {
-        route.setup(context!, transition!);
-      }
-
-      throwIfAborted(transition);
-
-      currentRouteInfos.push(routeInfo);
-      return route;
-    }
-
     // If the route doesn't exist, it means we haven't resolved the route promise yet
     if (route === undefined) {
       routeInfo.routePromise = routeInfo.routePromise.then((route) => {
-        if (route.manager && route.bucket !== undefined) {
-          return _routeEnteredOrUpdatedViaManager(route);
-        }
-        return _routeEnteredOrUpdated(route);
+        return _routeEnteredOrUpdatedViaManager(route);
       });
     } else {
-      if (route.manager && route.bucket !== undefined) {
-        _routeEnteredOrUpdatedViaManager(route);
-      } else {
-        _routeEnteredOrUpdated(route);
-      }
+      _routeEnteredOrUpdatedViaManager(route);
     }
 
     return true;

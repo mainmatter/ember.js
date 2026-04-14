@@ -8,15 +8,9 @@ import type {
   Template,
 } from '@glimmer/interfaces';
 import type { Reference } from '@glimmer/reference';
-import {
-  childRefFromParts,
-  createComputeRef,
-  createConstRef,
-  createDebugAliasRef,
-  valueForRef,
-} from '@glimmer/reference';
+import { createComputeRef, createConstRef, valueForRef } from '@glimmer/reference';
 import type { CurriedValue } from '@glimmer/runtime';
-import { createCapturedArgs, curry, EMPTY_POSITIONAL } from '@glimmer/runtime';
+import { createCapturedArgs, curry, EMPTY_POSITIONAL, isCurriedValue } from '@glimmer/runtime';
 import { dict } from '@glimmer/util';
 import { hasInternalComponentManager } from '@glimmer/manager';
 import { OutletComponent, type OutletDefinitionState } from '../component-managers/outlet';
@@ -88,16 +82,14 @@ export const outletHelper = internalHelper(
 
           let named = dict<Reference>();
 
-          // Here we either have a raw template that needs to be normalized,
-          // or a component that we can render as-is. `RouteTemplate` upgrades
-          // the template into a component so we can have a unified code path.
-          // We still store the original `template` value, because we rely on
-          // its identity for the stability check, and the `RouteTemplate`
-          // wrapper doesn't dedup for us.
+          // When the route manager provides the invokable, state.template is
+          // already a curried component with @controller and @model baked in.
+          // For backward compatibility (e.g. setOutletState from test helpers),
+          // raw templates and components are wrapped with makeRouteTemplate.
           let template = state.template;
           let component: object;
 
-          if (hasInternalComponentManager(template)) {
+          if (isCurriedValue(template) || hasInternalComponentManager(template)) {
             component = template;
           } else {
             if (DEBUG) {
@@ -137,35 +129,7 @@ export const outletHelper = internalHelper(
             component = makeRouteTemplate(outletOwner, state.name, template as Template);
           }
 
-          // Component is stable for the lifetime of the outlet
           named['Component'] = createConstRef(component, '@Component');
-
-          // Controller is stable for the lifetime of the outlet
-          named['controller'] = createConstRef(state.controller, '@controller');
-
-          // Create a ref for the model
-          let modelRef = childRefFromParts(outletRef, ['render', 'model']);
-
-          // Store the value of the model
-          let model = valueForRef(modelRef);
-
-          // Create a compute ref which we pass in as the `{{@model}}` reference
-          // for the outlet. This ref will update and return the value of the
-          // model _until_ the outlet itself changes. Once the outlet changes,
-          // dynamic scope also changes, and so the original model ref would not
-          // provide the correct updated value. So we stop updating and return
-          // the _last_ model value for that outlet.
-          named['model'] = createComputeRef(() => {
-            if (lastState === state) {
-              model = valueForRef(modelRef);
-            }
-
-            return model;
-          });
-
-          if (DEBUG) {
-            named['model'] = createDebugAliasRef!('@model', named['model']);
-          }
 
           let args = createCapturedArgs(named, EMPTY_POSITIONAL);
 
@@ -204,7 +168,6 @@ function stateFor(
     ref,
     name: render.name,
     template,
-    controller: render.controller,
   };
 }
 
@@ -216,5 +179,5 @@ function isStable(
     return false;
   }
 
-  return state.template === lastState.template && state.controller === lastState.controller;
+  return state.template === lastState.template;
 }

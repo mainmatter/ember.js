@@ -8,7 +8,8 @@ import type InternalTransition from './transition';
 import { isTransition, PARAMS_SYMBOL, QUERY_PARAMS_SYMBOL } from './transition';
 import { isParam, isPromise, merge } from './utils';
 import { throwIfAborted } from './transition-aborted-error';
-import type { RouteManager, RouteStateBucket } from '@ember/-internals/routing';
+import type { RouteManager } from '@ember/-internals/routing/route-managers/route-manager';
+import type { RouteStateBucket } from '@ember/-internals/routing/route-managers/utils';
 
 export type IModel = {} & {
   id?: string | number;

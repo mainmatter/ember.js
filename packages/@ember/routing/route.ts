@@ -2118,7 +2118,7 @@ export default Route;
 // --- Wire the ClassicRouteManager on the Route base class ---
 // Every Route subclass inherits this via the prototype-walking lookup in getRouteManager.
 
-import { setRouteManager } from '@ember/-internals/routing';
-import { ClassicRouteManager } from '@ember/-internals/routing';
+import { setRouteManager } from '@ember/-internals/routing/route-managers/utils';
+import { ClassicRouteManager } from '@ember/-internals/routing/route-managers/classic-route-manager';
 
 setRouteManager(() => new ClassicRouteManager(), Route);

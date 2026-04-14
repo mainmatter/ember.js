@@ -42,7 +42,6 @@ export interface OutletDefinitionState {
   ref: Reference<OutletState | undefined>;
   name: string;
   template: object;
-  controller: unknown;
 }
 
 const CAPABILITIES: InternalComponentCapabilities = {
@@ -172,10 +171,7 @@ class OutletComponentManager
 
 const OUTLET_MANAGER = new OutletComponentManager();
 
-const OUTLET_COMPONENT_TEMPLATE = precompileTemplate(
-  '<@Component @controller={{@controller}} @model={{@model}} />',
-  { strictMode: true }
-);
+const OUTLET_COMPONENT_TEMPLATE = precompileTemplate('<@Component />', { strictMode: true });
 
 export class OutletComponent implements ComponentDefinition<
   OutletDefinitionState,

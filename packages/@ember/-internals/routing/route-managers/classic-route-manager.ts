@@ -3,7 +3,13 @@ import { assert, info } from '@ember/debug';
 import { get } from '@ember/-internals/metal';
 import { DEBUG } from '@glimmer/env';
 import { hasInternalComponentManager } from '@glimmer/manager';
-import type { Destroyable, TemplateFactory } from '@glimmer/interfaces';
+import type { CurriedComponent, Destroyable, Template, TemplateFactory } from '@glimmer/interfaces';
+import type { Reference } from '@glimmer/reference';
+import { createComputeRef } from '@glimmer/reference';
+import { createCapturedArgs, curry, EMPTY_POSITIONAL } from '@glimmer/runtime';
+import { dict } from '@glimmer/util';
+import { tracked } from '@glimmer/tracking';
+import { makeRouteTemplate } from '@ember/-internals/glimmer/lib/component-managers/route-template';
 import type Route from '@ember/routing/route';
 import type {
   RouteManager,
@@ -21,10 +27,22 @@ import { Promise } from 'rsvp';
 
 // --- Bucket ---
 
-export interface ClassicRouteBucket extends RouteStateBucket {
+export class ClassicRouteBucket implements RouteStateBucket {
   route: Route;
-  context: unknown;
+  @tracked context: unknown;
+  controller: unknown;
   invokable: object | undefined;
+  instance: object;
+  args: CreateRouteArgs;
+
+  constructor(route: Route, args: CreateRouteArgs) {
+    this.route = route;
+    this.context = undefined;
+    this.controller = undefined;
+    this.invokable = undefined;
+    this.instance = route;
+    this.args = args;
+  }
 }
 
 // --- Classic interop args ---
@@ -55,13 +73,7 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
     let route = routeInstance as Route;
     route._setRouteName(args.name);
 
-    return {
-      route,
-      context: undefined,
-      invokable: undefined,
-      instance: route,
-      args,
-    };
+    return new ClassicRouteBucket(route, args);
   }
 
   getDestroyable(bucket: ClassicRouteBucket): Destroyable | null {
@@ -150,7 +162,7 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
         })
         .then((resolvedModel) => this._runAfterModel(route, resolvedModel, transition))
         .then((resolvedModel) => {
-          (bucket as any).context = resolvedModel;
+          bucket.context = resolvedModel;
 
           return resolvedModel;
         })
@@ -179,6 +191,10 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
     if (route.setup !== undefined) {
       route.setup(context, transition!);
     }
+
+    // Sync the controller onto the bucket so that the
+    // the invokable (see getInvokable) picks it up.
+    bucket.controller = route.controller;
 
     if (route._environment?.options?.shouldRender !== false) {
       once(route._router, '_setOutlets');
@@ -212,6 +228,11 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
   // --- Template/Component lookup ---
 
   getInvokable(bucket: ClassicRouteBucket): Promise<object | undefined> {
+    // Return cached invokable if already built
+    if (bucket.invokable !== undefined) {
+      return Promise.resolve(bucket.invokable);
+    }
+
     let route = bucket.route;
     let owner = getOwner(route);
     assert('Route is unexpectedly missing an owner', owner);
@@ -222,12 +243,17 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
       | object
       | undefined;
 
-    let template: object;
+    let component: object;
+    // Track whether the component is already a resolved definition (CurriedValue
+    // from makeRouteTemplate) vs a raw component class that needs VM resolution.
+    let isResolved = true;
 
     if (templateFactoryOrComponent) {
       if (hasInternalComponentManager(templateFactoryOrComponent)) {
-        // ComponentLike - pass through directly
-        template = templateFactoryOrComponent;
+        // ComponentLike - use directly, will be curried below.
+        // Not resolved yet — the VM needs to look up its definition.
+        component = templateFactoryOrComponent;
+        isResolved = false;
       } else {
         if (DEBUG && typeof templateFactoryOrComponent !== 'function') {
           let label: string;
@@ -246,8 +272,9 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
           );
         }
 
-        // TemplateFactory -> Template
-        template = (templateFactoryOrComponent as TemplateFactory)(owner);
+        // TemplateFactory -> Template -> RouteTemplate (curried component with no args)
+        let template = (templateFactoryOrComponent as TemplateFactory)(owner);
+        component = makeRouteTemplate(owner, name, template as Template);
       }
     } else {
       if (DEBUG) {
@@ -258,11 +285,33 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
           });
         }
       }
-      // Default {{outlet}} template
-      template = route._topLevelViewTemplate(owner);
+      // Default {{outlet}} template -> RouteTemplate
+      let template = route._topLevelViewTemplate(owner);
+      component = makeRouteTemplate(owner, name, template as Template);
     }
 
-    bucket.invokable = template;
-    return Promise.resolve(template);
+    // Create refs that read from the bucket. The bucket fields are populated
+    // later (context during enter(), controller during didEnter()), so these
+    // refs start as undefined and resolve lazily.
+    //
+    // Controller: a tag-free compute ref. It's read lazily (first read happens
+    // during rendering, after didEnter has set bucket.controller).
+    //
+    // Model: bucket.context is @tracked, so this compute ref auto-tracks it
+    // and re-evaluates when the model changes (e.g. navigating to the same
+    // route with different dynamic segments).
+    let named = dict<Reference>();
+    named['controller'] = createComputeRef(() => bucket.controller);
+    named['model'] = createComputeRef(() => bucket.context);
+
+    let args = createCapturedArgs(named, EMPTY_POSITIONAL);
+
+    // Curry @controller and @model onto the component so the invokable is
+    // self-contained. The outlet rendering pipeline no longer needs to know
+    // about model or controller.
+    let invokable = curry(0 as CurriedComponent, component, owner, args, isResolved);
+
+    bucket.invokable = invokable;
+    return Promise.resolve(invokable);
   }
 }

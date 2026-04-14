@@ -34,7 +34,7 @@ import {
   getFullQueryParams,
   hasDefaultSerialize,
 } from '@ember/routing/route';
-import { getRouteManager } from '@ember/-internals/routing';
+import { getRouteManager } from '@ember/-internals/routing/route-managers/utils';
 import type {
   InternalRouteInfo,
   ModelFor,
@@ -629,8 +629,6 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
       let render = {
         owner: routeOwner,
         name: route.routeName,
-        controller: route.controller,
-        model: route.currentModel,
         template,
       };
 

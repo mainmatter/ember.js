@@ -15,18 +15,9 @@ export interface RenderState {
   name: string;
 
   /**
-   * The controller (the self of the outlet component)
-   */
-  controller: unknown;
-
-  /**
-   * The model (the resolved value of the model hook)
-   */
-  model: unknown;
-
-  /**
-   * The route's template – this is either a Template or a component, and it
-   * gets normalized during the render process.
+   * The route's invokable – a component with @controller and @model
+   * already applied by the route manager. This is either a CurriedValue
+   * (for classic routes) or a raw component/template for backward compatibility.
    */
   template: Template | object | undefined;
 }

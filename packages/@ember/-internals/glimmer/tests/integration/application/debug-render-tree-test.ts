@@ -1686,7 +1686,7 @@ if (ENV._DEBUG_RENDER_TREE) {
           this.outlet({
             type: 'route-template',
             name: '-top-level',
-            args: { positional: [], named: { controller: undefined, model: undefined } },
+            args: { positional: [], named: {} },
             instance: undefined,
             template: outlet,
             bounds: this.elementBounds(this.element!),

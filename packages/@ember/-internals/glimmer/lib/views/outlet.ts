@@ -68,8 +68,6 @@ export default class OutletView {
       render: {
         owner: owner,
         name: TOP_LEVEL_NAME,
-        controller: undefined,
-        model: undefined,
         template,
       },
     };
@@ -89,7 +87,6 @@ export default class OutletView {
       ref,
       name: TOP_LEVEL_NAME,
       template,
-      controller: undefined,
     };
   }
 

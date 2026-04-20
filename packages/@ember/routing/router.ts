@@ -375,9 +375,7 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
       // Engine routes must not define a custom serialize method.
       const isEngineRoute = routeOwner !== getOwner(this);
       if (isEngineRoute && !hasDefaultSerialize(RouteClass.prototype as any)) {
-        throw new Error(
-          'Defining a custom serialize method on an Engine route is not supported.'
-        );
+        throw new Error('Defining a custom serialize method on an Engine route is not supported.');
       }
 
       // Look up the manager factory function via prototype walk on the class.
@@ -387,15 +385,15 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
       // Instantiate the manager once per owner. Keyed first by owner so engine routes
       // get their own manager instances, then by factory function so all subclasses
       // sharing the same factory share one manager instance within that owner.
-      let ownerManagerInstances = this.#routeManagerInstances.get(routeOwner);
-      if (!ownerManagerInstances) {
-        ownerManagerInstances = new WeakMap();
-        this.#routeManagerInstances.set(routeOwner, ownerManagerInstances);
+      let ownerRouteManagerInstances = this.#routeManagerInstances.get(routeOwner);
+      if (!ownerRouteManagerInstances) {
+        ownerRouteManagerInstances = new WeakMap();
+        this.#routeManagerInstances.set(routeOwner, ownerRouteManagerInstances);
       }
-      if (!ownerManagerInstances.has(managerFactory)) {
-        ownerManagerInstances.set(managerFactory, managerFactory(routeOwner));
+      if (!ownerRouteManagerInstances.has(managerFactory)) {
+        ownerRouteManagerInstances.set(managerFactory, managerFactory(routeOwner));
       }
-      let routeManagerInstance = ownerManagerInstances.get(managerFactory)!;
+      let routeManagerInstance = ownerRouteManagerInstances.get(managerFactory)!;
 
       // Pass the concrete class to createRoute — the manager is responsible for instantiation.
       let routeStateBucket = routeManagerInstance.createRoute(RouteClass, { name: routeName });

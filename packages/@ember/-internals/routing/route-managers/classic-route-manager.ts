@@ -1,4 +1,4 @@
-import { getOwner } from '@ember/-internals/owner';
+import { getOwner, setOwner } from '@ember/-internals/owner';
 import { assert, info } from '@ember/debug';
 import { get } from '@ember/-internals/metal';
 import { DEBUG } from '@glimmer/env';
@@ -10,6 +10,7 @@ import { createCapturedArgs, curry, EMPTY_POSITIONAL } from '@glimmer/runtime';
 import { dict } from '@glimmer/util';
 import { tracked } from '@glimmer/tracking';
 import { makeRouteTemplate } from '@ember/-internals/glimmer/lib/component-managers/route-template';
+import type Owner from '@ember/owner';
 import type Route from '@ember/routing/route';
 import type {
   RouteManager,
@@ -69,8 +70,16 @@ export interface ClassicInteropArgs {
 export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
   capabilities: RouteCapabilities = routeCapabilities('1.0', { classicInterop: true });
 
-  createRoute(routeInstance: object, args: CreateRouteArgs): ClassicRouteBucket {
-    let route = routeInstance as Route;
+  #owner: Owner;
+
+  constructor(owner: Owner) {
+    this.#owner = owner;
+  }
+
+  createRoute(RouteClass: typeof Route, args: CreateRouteArgs): ClassicRouteBucket {
+    let props = {};
+    setOwner(props, this.#owner);
+    let route = RouteClass.create(props);
     route._setRouteName(args.name);
 
     return new ClassicRouteBucket(route, args);

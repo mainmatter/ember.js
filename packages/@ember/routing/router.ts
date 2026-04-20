@@ -34,7 +34,7 @@ import {
   getFullQueryParams,
   hasDefaultSerialize,
 } from '@ember/routing/route';
-import { getRouteManager } from '@ember/-internals/routing/route-managers/utils';
+import { getRouteManager, RouteStateBucket } from '@ember/-internals/routing/route-managers/utils';
 import type {
   InternalRouteInfo,
   ModelFor,
@@ -51,6 +51,7 @@ import type { QueryParams } from 'route-recognizer';
 import type { AnyFn, MethodNamesOf, OmitFirst } from '@ember/-internals/utility-types';
 import type { Template } from '@glimmer/interfaces';
 import type ApplicationInstance from '@ember/application/instance';
+import { RouteManager } from '@ember/-internals/routing/route-managers/route-manager';
 
 /**
 @module @ember/routing/router
@@ -312,71 +313,112 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
     this._routerService = routerService;
   }
 
+  // Both routes and manager instances are keyed first by owner so that engine routes
+  // (which share local names like 'application' with the main app) are isolated.
+  #routes = new WeakMap<object, Map<string, RouteStateBucket>>();
+  #routeManagerInstances = new WeakMap<object, WeakMap<Function, RouteManager<RouteStateBucket>>>();
+
+  getRoute(name: string, engineOwner?: Owner) {
+    if (name === 'undefined') {
+      return;
+    }
+
+    assert('Name should not start with "route:"', !name.startsWith('route:'));
+
+    // Resolve the owner and local route name.
+    // If engineOwner is provided (from the container bypass for an engine container),
+    // use it directly — the name is already the local route name within that engine.
+    // Otherwise, check _engineInfoByRoute to resolve engine routes by fully-qualified name.
+    let routeName = name;
+    let routeOwner: Owner;
+
+    if (engineOwner) {
+      routeOwner = engineOwner;
+    } else {
+      routeOwner = getOwner(this)!;
+      assert('BUG: Missing owner', routeOwner);
+
+      const engineInfo = this._engineInfoByRoute[routeName];
+      if (engineInfo) {
+        routeOwner = this._getEngineInstance(engineInfo);
+        routeName = engineInfo.localFullName;
+      }
+    }
+
+    // Per-owner route cache.
+    let ownerRoutes = this.#routes.get(routeOwner);
+    if (!ownerRoutes) {
+      ownerRoutes = new Map();
+      this.#routes.set(routeOwner, ownerRoutes);
+    }
+
+    if (!ownerRoutes.has(routeName)) {
+      let fullRouteName = `route:${routeName}` as const;
+      let factoryManager = routeOwner.factoryFor(fullRouteName);
+
+      // Auto-generate a default route if none is registered.
+      if (!factoryManager) {
+        let DefaultRoute: any = routeOwner.factoryFor('route:basic')!.class;
+        routeOwner.register(fullRouteName, class extends DefaultRoute {});
+        factoryManager = routeOwner.factoryFor(fullRouteName);
+
+        if (DEBUG) {
+          if (this.namespace.LOG_ACTIVE_GENERATION) {
+            info(`generated -> ${fullRouteName}`, { fullName: fullRouteName });
+          }
+        }
+      }
+
+      assert('BUG: Missing factory for route', factoryManager);
+      let RouteClass = factoryManager.class;
+
+      // Engine routes must not define a custom serialize method.
+      const isEngineRoute = routeOwner !== getOwner(this);
+      if (isEngineRoute && !hasDefaultSerialize(RouteClass.prototype as any)) {
+        throw new Error(
+          'Defining a custom serialize method on an Engine route is not supported.'
+        );
+      }
+
+      // Look up the manager factory function via prototype walk on the class.
+      let managerFactory = getRouteManager(RouteClass);
+      assert('Route manager needs to be defined', managerFactory !== undefined);
+
+      // Instantiate the manager once per owner. Keyed first by owner so engine routes
+      // get their own manager instances, then by factory function so all subclasses
+      // sharing the same factory share one manager instance within that owner.
+      let ownerManagerInstances = this.#routeManagerInstances.get(routeOwner);
+      if (!ownerManagerInstances) {
+        ownerManagerInstances = new WeakMap();
+        this.#routeManagerInstances.set(routeOwner, ownerManagerInstances);
+      }
+      if (!ownerManagerInstances.has(managerFactory)) {
+        ownerManagerInstances.set(managerFactory, managerFactory(routeOwner));
+      }
+      let routeManagerInstance = ownerManagerInstances.get(managerFactory)!;
+
+      // Pass the concrete class to createRoute — the manager is responsible for instantiation.
+      let routeStateBucket = routeManagerInstance.createRoute(RouteClass, { name: routeName });
+
+      assert('Failed to create Route instance', routeStateBucket.instance);
+      (routeStateBucket.instance as any).bucket = routeStateBucket;
+      (routeStateBucket.instance as any).manager = routeManagerInstance;
+      ownerRoutes.set(routeName, routeStateBucket as RouteStateBucket);
+    }
+
+    return ownerRoutes.get(routeName)!.instance;
+  }
+
   _initRouterJs(): void {
     let location = get(this, 'location') as EmberLocation;
     let router = this;
     const owner = getOwner(this);
     assert('Router is unexpectedly missing an owner', owner);
-    let seen = Object.create(null);
-
     class PrivateRouter extends Router<Route> {
       getRoute(name: string): Route {
-        let routeName = name;
-        let routeOwner = owner;
-        let engineInfo = router._engineInfoByRoute[routeName];
-
-        if (engineInfo) {
-          let engineInstance = router._getEngineInstance(engineInfo);
-
-          routeOwner = engineInstance;
-          routeName = engineInfo.localFullName;
-        }
-
-        let fullRouteName = `route:${routeName}` as const;
-
-        assert('Route is unexpectedly missing an owner', routeOwner);
-
-        let route = routeOwner.lookup(fullRouteName) as Route | undefined;
-
-        if (seen[name]) {
-          assert('seen routes should exist', route);
-          return route;
-        }
-
-        seen[name] = true;
-
-        if (!route) {
-          // SAFETY: this is configured in `commonSetupRegistry` in the
-          // `@ember/application/lib` package.
-          let DefaultRoute: any = routeOwner.factoryFor('route:basic')!.class;
-          routeOwner.register(fullRouteName, class extends DefaultRoute {});
-          route = routeOwner.lookup(fullRouteName) as Route;
-
-          if (DEBUG) {
-            if (router.namespace.LOG_ACTIVE_GENERATION) {
-              info(`generated -> ${fullRouteName}`, { fullName: fullRouteName });
-            }
-          }
-        }
-
-        // Look up the route manager and create a bucket.
-        // This activates the manager-driven code paths in router_js.
-        let manager = getRouteManager(route.constructor);
-        assert(`Route ${fullRouteName} does not have a manager`, manager);
-
-        let bucket = manager.createRoute(route, { name: routeName });
-        route.manager = manager;
-
-        assert('Route manager should return a bucket', bucket);
-        route.bucket = bucket;
-
-        if (engineInfo && !hasDefaultSerialize(route)) {
-          throw new Error(
-            'Defining a custom serialize method on an Engine route is not supported.'
-          );
-        }
-
-        return route;
+        // All route instantiation and caching is owned by EmberRouter.getRoute,
+        // which resolves engine vs main-app owner internally.
+        return router.getRoute(name) as Route;
       }
 
       getSerializer(name: string) {

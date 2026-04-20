@@ -2121,4 +2121,4 @@ export default Route;
 import { setRouteManager } from '@ember/-internals/routing/route-managers/utils';
 import { ClassicRouteManager } from '@ember/-internals/routing/route-managers/classic-route-manager';
 
-setRouteManager(() => new ClassicRouteManager(), Route);
+setRouteManager((owner) => new ClassicRouteManager(owner), Route);

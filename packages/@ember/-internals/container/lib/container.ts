@@ -6,12 +6,13 @@ import type {
   FactoryManager,
   FullName,
 } from '@ember/-internals/owner';
-import { setOwner } from '@ember/-internals/owner';
+import { getOwner, setOwner } from '@ember/-internals/owner';
 import { dictionary } from '@ember/-internals/utils';
 import { assert } from '@ember/debug';
 import { DEBUG } from '@glimmer/env';
 import type { DebugRegistry } from './registry';
 import type Registry from './registry';
+import type EmberRouter from '@ember/routing/router';
 
 interface LeakTracking {
   hasContainers(): boolean;
@@ -281,6 +282,23 @@ function lookup(
   options: RegisterOptions = {}
 ): InternalFactory<object> | object | undefined {
   let normalizedName = fullName;
+
+  if (normalizedName.startsWith('route:') && container.owner) {
+    let router = container.owner.lookup('router:main') as EmberRouter;
+    let routeName = normalizedName.split('route:')[1];
+    if (routeName !== undefined) {
+      // For the main app container, pass the name directly — EmberRouter.getRoute
+      // resolves engine vs app routes internally via _engineInfoByRoute.
+      // For engine containers (owner !== router's owner), pass the engine owner
+      // explicitly so EmberRouter.getRoute uses it directly without a name lookup.
+      const isEngineContainer = getOwner(router) !== container.owner;
+      const engineOwner = isEngineContainer ? container.owner : undefined;
+      return router.getRoute(routeName, engineOwner) as
+        | InternalFactory<object>
+        | object
+        | undefined;
+    }
+  }
 
   if (
     options.singleton === true ||

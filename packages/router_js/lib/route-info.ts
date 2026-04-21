@@ -271,6 +271,7 @@ export default class InternalRouteInfo<R extends Route> {
     bucket: RouteStateBucket,
     transition: InternalTransition<R>
   ): Promise<ResolvedRouteInfo<R>> {
+    manager.willEnter(bucket, { transition });
     return Promise.all([
       manager.enter(bucket, {
         transition,

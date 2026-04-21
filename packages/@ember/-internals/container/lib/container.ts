@@ -283,7 +283,9 @@ function lookup(
 ): InternalFactory<object> | object | undefined {
   let normalizedName = fullName;
 
-  if (normalizedName.startsWith('route:') && container.owner) {
+  if (normalizedName.startsWith('route:')) {
+    assert('Expected container to have an owner when looking up a route', container.owner);
+
     let router = container.owner.lookup('router:main') as EmberRouter;
     let routeName = normalizedName.split('route:')[1];
     if (routeName !== undefined) {

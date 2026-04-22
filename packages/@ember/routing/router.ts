@@ -374,7 +374,7 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
 
       // Engine routes must not define a custom serialize method.
       const isEngineRoute = routeOwner !== getOwner(this);
-      if (isEngineRoute && !hasDefaultSerialize(RouteClass.prototype as any)) {
+      if (isEngineRoute && !hasDefaultSerialize(Object.getPrototypeOf(RouteClass))) {
         throw new Error('Defining a custom serialize method on an Engine route is not supported.');
       }
 

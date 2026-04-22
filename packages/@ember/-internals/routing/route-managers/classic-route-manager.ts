@@ -33,7 +33,6 @@ export class ClassicRouteBucket implements RouteStateBucket {
   @tracked context: unknown;
   controller: unknown;
   invokable: object | undefined;
-  instance: object;
   args: CreateRouteArgs;
 
   constructor(route: Route, args: CreateRouteArgs) {
@@ -41,7 +40,6 @@ export class ClassicRouteBucket implements RouteStateBucket {
     this.context = undefined;
     this.controller = undefined;
     this.invokable = undefined;
-    this.instance = route;
     this.args = args;
   }
 }
@@ -82,7 +80,11 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
     let route = RouteClass.create(props);
     route._setRouteName(args.name);
 
-    return new ClassicRouteBucket(route, args);
+    const bucket = new ClassicRouteBucket(route, args);
+    route.bucket = bucket;
+    route.manager = this;
+
+    return bucket;
   }
 
   getDestroyable(bucket: ClassicRouteBucket): Destroyable | null {

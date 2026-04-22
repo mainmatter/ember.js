@@ -4,7 +4,8 @@ import { debugAssert } from '@glimmer/global-context';
 
 export interface RouteStateBucket {
   invokable?: object;
-  instance?: unknown;
+  route?: object & { manager: RouteManager<RouteStateBucket> };
+  context?: unknown;
   args: object;
 }
 

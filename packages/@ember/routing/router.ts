@@ -398,13 +398,11 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
       // Pass the concrete class to createRoute — the manager is responsible for instantiation.
       let routeStateBucket = routeManagerInstance.createRoute(RouteClass, { name: routeName });
 
-      assert('Failed to create Route instance', routeStateBucket.instance);
-      (routeStateBucket.instance as any).bucket = routeStateBucket;
-      (routeStateBucket.instance as any).manager = routeManagerInstance;
-      ownerRoutes.set(routeName, routeStateBucket as RouteStateBucket);
+      assert('Failed to create Route instance', routeStateBucket.route);
+      ownerRoutes.set(routeName, routeStateBucket);
     }
 
-    return ownerRoutes.get(routeName)!.instance;
+    return ownerRoutes.get(routeName)!.route;
   }
 
   _initRouterJs(): void {

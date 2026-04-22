@@ -655,7 +655,7 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
       let route = routeInfo.route;
       assert('RouteInfo should have route', route);
 
-      let bucket = route.bucket as { invokable?: object; context?: unknown } | undefined;
+      let bucket = route.bucket;
       let template = routeInfo.invokable ?? bucket?.invokable;
 
       assert('Expected route to have an invokable template or component', template !== undefined);

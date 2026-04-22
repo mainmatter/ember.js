@@ -66,16 +66,22 @@ export interface RouteManager<R extends RouteStateBucket> {
   createRoute(definition: object, args: CreateRouteArgs): R;
   getDestroyable(bucket: R): Destroyable | null;
 
-  willEnter(bucket: R, args: NavigationState & NavigationActions): void;
+  willEnter(
+    bucket: R,
+    args: NavigationState & NavigationActions & NavigationStateWithTransition
+  ): void;
   enter(
     bucket: R,
     args: NavigationState & NavigationActions & AsyncNavigationState & NavigationStateWithTransition
   ): Promise<unknown>;
-  didEnter(bucket: R, args: NavigationState): void;
+  didEnter(bucket: R, args: NavigationState & NavigationStateWithTransition): void;
 
-  willExit(bucket: R, args: NavigationState & NavigationActions): void;
-  exit(bucket: R, args: NavigationState): void;
-  didExit(bucket: R, args: NavigationState): void;
+  willExit(
+    bucket: R,
+    args: NavigationState & NavigationActions & NavigationStateWithTransition
+  ): void;
+  exit(bucket: R, args: NavigationState & NavigationStateWithTransition): void;
+  didExit(bucket: R, args: NavigationState & NavigationStateWithTransition): void;
 
   getInvokable(bucket: R): Promise<object | undefined>;
 }

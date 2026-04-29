@@ -1,6 +1,6 @@
 import { Promise } from 'rsvp';
 import type { Dict } from './core';
-import type { Route, ResolvedRouteInfo } from './route-info';
+import type { Route } from './route-info';
 import type InternalRouteInfo from './route-info';
 import type Transition from './transition';
 import { forEach, promiseLabel } from './utils';
@@ -36,15 +36,15 @@ function resolveOneRouteInfo<R extends Route>(
   transition: Transition<R>
 ): void | Promise<void> {
   if (transition.resolveIndex === currentState.routeInfos.length) {
-    // This is is the only possible
-    // fulfill value of TransitionState#resolve
+    // All routes in this transition have had their getInvokable() resolved.
+    // This is the only fulfill value of TransitionState#resolve.
     return;
   }
 
   let routeInfo = currentState.routeInfos[transition.resolveIndex]!;
 
   let callback = proceed.bind(null, currentState, transition) as (
-    resolvedRouteInfo: ResolvedRouteInfo<R>
+    readyRouteInfo: InternalRouteInfo<R>
   ) => void | Promise<void>;
 
   return routeInfo.resolve(transition).then(callback, null, currentState.promiseLabel('Proceed'));
@@ -53,36 +53,30 @@ function resolveOneRouteInfo<R extends Route>(
 function proceed<R extends Route>(
   currentState: TransitionState<R>,
   transition: Transition<R>,
-  resolvedRouteInfo: ResolvedRouteInfo<R>
+  readyRouteInfo: InternalRouteInfo<R>
 ): void | Promise<void> {
-  let wasAlreadyResolved = currentState.routeInfos[transition.resolveIndex]!.isResolved;
+  const routeIndex = transition.resolveIndex;
+  currentState.routeInfos[transition.resolveIndex++] = readyRouteInfo;
 
-  // Swap the previously unresolved routeInfo with
-  // the resolved routeInfo
-  currentState.routeInfos[transition.resolveIndex++] = resolvedRouteInfo;
+  // Notify the router that this route's invokable is ready. EmberRouter uses
+  // this to place the route at routeIndex in currentRouteInfos, replacing any
+  // loading/error substate that was entered for this position, and schedules
+  // _setOutlets so the outlet tree is updated before enter() finishes.
+  transition.router.onRouteInvokableReady(readyRouteInfo, transition, routeIndex);
 
-  if (!wasAlreadyResolved) {
-    // Call the redirect hook. The reason we call it here
-    // vs. afterModel is so that redirects into child
-    // routes don't re-run the model hooks for this
-    // already-resolved route.
-    let { route } = resolvedRouteInfo;
-    if (route !== undefined) {
-      if (route.manager) {
-        // redirect is a classic-only hook, not part of the RouteManager interface.
-        // Non-classic managers redirect during enter() via the transition/cancel API.
-        if (route.manager.capabilities.classicInterop && route.redirect) {
-          route.redirect(resolvedRouteInfo.context, transition);
-        }
-      } else if (route.redirect) {
-        // No manager yet (migration period fallback) — call redirect directly
-        route.redirect(resolvedRouteInfo.context, transition);
-      }
+  // Skip redirect for intermediate transitions (loading/error substates). Their
+  // routeInfos come from applyToState already resolved and never run the model
+  // hook in this transition, so a redirect callback would be inappropriate.
+  if (!transition.isIntermediate) {
+    // Call the redirect hook now that the route's model has resolved. Calling
+    // it here, between resolution and the next route's resolution, lets a
+    // redirect into a child route skip re-running this route's model hook.
+    const route = readyRouteInfo.route;
+    if (route !== undefined && route.redirect) {
+      route.redirect(readyRouteInfo.context, transition);
     }
   }
 
-  // Proceed after ensuring that the redirect hook
-  // didn't abort this transition by transitioning elsewhere.
   throwIfAborted(transition);
 
   return resolveOneRouteInfo(currentState, transition);

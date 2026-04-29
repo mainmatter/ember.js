@@ -64,6 +64,41 @@ export default abstract class Router<R extends Route> {
   abstract routeDidChange(transition: Transition): void;
   abstract transitionDidError(error: TransitionError, transition: Transition): Transition | Error;
 
+  // Called once all getInvokable() calls in the transition have resolved, meaning the
+  // outlet tree has already been updated incrementally and enter() promises are in flight
+  // on each bucket. EmberRouter overrides this to run exit/enter lifecycle hooks, update
+  // the URL, await all enter() promises, then fire didEnter/didExit/routeDidChange.
+  // The default is a no-op so that test routers that do not care about rendering work
+  // without changes.
+  onTransitionSettled(
+    _transition: InternalTransition<R>,
+    _newState: TransitionState<R>
+  ): void | Promise<void> {}
+
+  // Called once per route, in parent-to-child order, as each getInvokable() resolves
+  // during a normal transition. EmberRouter overrides this to push the route into
+  // currentRouteInfos and schedule _setOutlets so rendering happens incrementally
+  // rather than waiting for the entire transition chain to finish.
+  // The routeIndex is the position of this route in the transition's resolved hierarchy,
+  // allowing EmberRouter to write directly to the correct slot in currentRouteInfos
+  // and replace any intermediate (loading/error substate) entry that was placed there.
+  // Default is a no-op so test routers work without changes.
+  onRouteInvokableReady(
+    _routeInfo: InternalRouteInfo<R>,
+    _transition: InternalTransition<R>,
+    _routeIndex: number
+  ): void {}
+
+  // Called when intermediateTransitionTo fires, for example from ClassicRouteManager
+  // willEnter when it detects a loading substate. EmberRouter overrides this to splice
+  // the intermediate route into currentRouteInfos and schedule _setOutlets, without
+  // disturbing the ancestor routes that are already rendering correctly.
+  // Default is a no-op so test routers work without changes.
+  onIntermediateTransition(
+    _newState: TransitionState<R>,
+    _transition: InternalTransition<R>
+  ): void {}
+
   /**
     The main entry point into the router. The API is essentially
     the same as the `map` method in `route-recognizer`.
@@ -224,12 +259,12 @@ export default abstract class Router<R extends Route> {
     }
 
     if (isIntermediate) {
-      let transition = new InternalTransition(this, undefined, newState);
-      transition.isIntermediate = true;
-      this.toReadOnlyInfos(transition, newState);
-      this.setupContexts(newState, transition);
+      let intermediateTransition = new InternalTransition(this, undefined, newState);
+      intermediateTransition.isIntermediate = true;
+      this.toReadOnlyInfos(intermediateTransition, newState);
+      this.onIntermediateTransition(newState, intermediateTransition);
 
-      this.routeWillChange(transition);
+      this.routeWillChange(intermediateTransition);
       return this.activeTransition!;
     }
 
@@ -255,15 +290,18 @@ export default abstract class Router<R extends Route> {
     }
     this.activeTransition = newTransition;
 
-    // Transition promises by default resolve with resolved state.
-    // For our purposes, swap out the promise to resolve
-    // after the transition has been finalized.
+    // Once all getInvokable() calls have resolved (the TransitionState promise settles),
+    // hand off to EmberRouter to run exit/enter lifecycle, update the URL, and await
+    // all enter() promises before firing didEnter/didExit/routeDidChange. Returning
+    // the promise here so an error inside onTransitionSettled (e.g. setup() throwing
+    // inside didEnter) rejects the transition's outer promise, which application.visit
+    // and handleURL callers chain off of.
     newTransition.promise = newTransition.promise!.then(
-      (result: TransitionState<R>) => {
-        return this.finalizeTransition(newTransition, result);
+      (newState: TransitionState<R>) => {
+        return this.onTransitionSettled(newTransition, newState);
       },
       null,
-      promiseLabel('Settle transition promise when transition is finalized')
+      promiseLabel('Settle transition promise when all getInvokable calls have resolved')
     );
 
     if (!wasTransitioning) {
@@ -336,158 +374,6 @@ export default abstract class Router<R extends Route> {
   /**
   @private
 
-  Updates the URL (if necessary) and calls `setupContexts`
-  to update the router's array of `currentRouteInfos`.
- */
-  private finalizeTransition(
-    transition: InternalTransition<R>,
-    newState: TransitionState<R>
-  ): R | Promise<any> {
-    try {
-      log(
-        transition.router,
-        transition.sequence,
-        'Resolved all models on destination route; finalizing transition.'
-      );
-
-      let routeInfos = newState.routeInfos;
-
-      // Run all the necessary enter/setup/exit hooks
-      this.setupContexts(newState, transition);
-
-      // Check if a redirect occurred in enter/setup
-      if (transition.isAborted) {
-        // TODO: cleaner way? distinguish b/w targetRouteInfos?
-        this.state!.routeInfos = this.currentRouteInfos!;
-        return Promise.reject(logAbort(transition));
-      }
-
-      this._updateURL(transition, newState);
-
-      transition.isActive = false;
-      this.activeTransition = undefined;
-
-      this.triggerEvent(this.currentRouteInfos!, true, 'didTransition', []);
-      this.didTransition(this.currentRouteInfos!);
-      this.toInfos(transition, newState.routeInfos, true);
-      this.routeDidChange(transition);
-
-      log(this, transition.sequence, 'TRANSITION COMPLETE.');
-
-      // Resolve with the final route.
-      return routeInfos[routeInfos.length - 1]!.route!;
-    } catch (e) {
-      if (!isTransitionAborted(e)) {
-        let infos = transition[STATE_SYMBOL]!.routeInfos;
-        transition.trigger(true, 'error', e, transition, infos[infos.length - 1]!.route);
-        transition.abort();
-      }
-
-      throw e;
-    }
-  }
-
-  /**
-  @private
-
-  Takes an Array of `RouteInfo`s, figures out which ones are
-  exiting, entering, or changing contexts, and calls the
-  proper route hooks.
-
-  For example, consider the following tree of routes. Each route is
-  followed by the URL segment it handles.
-
-  ```
-  |~index ("/")
-  | |~posts ("/posts")
-  | | |-showPost ("/:id")
-  | | |-newPost ("/new")
-  | | |-editPost ("/edit")
-  | |~about ("/about/:id")
-  ```
-
-  Consider the following transitions:
-
-  1. A URL transition to `/posts/1`.
-     1. Triggers the `*model` callbacks on the
-        `index`, `posts`, and `showPost` routes
-     2. Triggers the `enter` callback on the same
-     3. Triggers the `setup` callback on the same
-  2. A direct transition to `newPost`
-     1. Triggers the `exit` callback on `showPost`
-     2. Triggers the `enter` callback on `newPost`
-     3. Triggers the `setup` callback on `newPost`
-  3. A direct transition to `about` with a specified
-     context object
-     1. Triggers the `exit` callback on `newPost`
-        and `posts`
-     2. Triggers the `serialize` callback on `about`
-     3. Triggers the `enter` callback on `about`
-     4. Triggers the `setup` callback on `about`
-
-  @param {Router} transition
-  @param {TransitionState} newState
-*/
-  private setupContexts(newState: TransitionState<R>, transition?: InternalTransition<R>) {
-    let partition = this.partitionRoutes(this.state!, newState);
-    let i, l, route;
-
-    for (i = 0, l = partition.exited.length; i < l; i++) {
-      route = partition.exited[i]!.route;
-
-      if (route !== undefined) {
-        let args = { transition, isExiting: true };
-        route.manager.willExit(route.bucket, args);
-        route.manager.exit(route.bucket, args);
-      }
-    }
-
-    let oldState = (this.oldState = this.state);
-    this.state = newState;
-    let currentRouteInfos = (this.currentRouteInfos = partition.unchanged.slice());
-
-    try {
-      for (i = 0, l = partition.reset.length; i < l; i++) {
-        route = partition.reset[i]!.route;
-        if (route !== undefined) {
-          if (route.manager && route.bucket !== undefined) {
-            // Reset (not exiting) — willExit with isExiting: false semantics
-            let args = { transition, isExiting: false };
-            route.manager.willExit(route.bucket, args);
-          } else if (route._internalReset !== undefined) {
-            route._internalReset(false, transition);
-          }
-        }
-      }
-
-      for (i = 0, l = partition.updatedContext.length; i < l; i++) {
-        this.routeEnteredOrUpdated(
-          currentRouteInfos,
-          partition.updatedContext[i]!,
-          false,
-          transition!
-        );
-      }
-
-      for (i = 0, l = partition.entered.length; i < l; i++) {
-        this.routeEnteredOrUpdated(currentRouteInfos, partition.entered[i]!, true, transition!);
-      }
-    } catch (e) {
-      this.state = oldState;
-      this.currentRouteInfos = oldState!.routeInfos;
-      throw e;
-    }
-
-    this.state.queryParams = this.finalizeQueryParamChange(
-      currentRouteInfos,
-      newState.queryParams,
-      transition!
-    );
-  }
-
-  /**
-  @private
-
   Fires queryParamsDidChange event
 */
   private fireQueryParamDidChange(newState: TransitionState<R>, queryParamChangelist: ChangeList) {
@@ -504,67 +390,6 @@ export default abstract class Router<R extends Route> {
       ]);
       this._changedQueryParams = undefined;
     }
-  }
-
-  /**
-  @private
-
-  Helper method used by setupContexts. Handles errors or redirects
-  that may happen in enter/setup.
-*/
-  private routeEnteredOrUpdated(
-    currentRouteInfos: InternalRouteInfo<R>[],
-    routeInfo: InternalRouteInfo<R>,
-    enter: boolean,
-    transition?: InternalTransition<R>
-  ) {
-    let route = routeInfo.route,
-      context = routeInfo.context;
-
-    function _routeEnteredOrUpdatedViaManager(route: R) {
-      // Sync routeInfo.context -> bucket.context. This is necessary because
-      // intermediate transitions (error/loading substates) skip the resolve
-      // phase entirely — they go straight to setupContexts via
-      // intermediateTransitionTo -> applyToState(isIntermediate=true) ->
-      // becomeResolved() -> setupContexts. Since resolveViaManager() never
-      // runs, bucket.context is never set during resolve.
-      if (route.bucket !== undefined) {
-        (route.bucket as any).context = context;
-      }
-      // For intermediate transitions, getInvokable() was never called during
-      // resolve. Call it now so the template can be found for rendering.
-      // ClassicRouteManager.getInvokable() returns a synchronously resolved
-      // promise, so the invokable is available by the time didEnter runs setup()
-      // which schedules _setOutlets.
-      if (routeInfo.invokable === undefined && route.manager) {
-        route.manager.getInvokable(route.bucket).then((invokable: any) => {
-          routeInfo.invokable = invokable;
-          if (route.bucket) {
-            (route.bucket as any).invokable = invokable;
-          }
-        });
-      }
-      // Pass transition and enter flag through args so the ClassicRouteManager
-      // can forward them to route.enter() and route.setup()
-      let args = { transition, enter };
-      route.manager!.didEnter(route.bucket, args);
-
-      throwIfAborted(transition);
-
-      currentRouteInfos.push(routeInfo);
-      return route;
-    }
-
-    // If the route doesn't exist, it means we haven't resolved the route promise yet
-    if (route === undefined) {
-      routeInfo.routePromise = routeInfo.routePromise.then((route) => {
-        return _routeEnteredOrUpdatedViaManager(route);
-      });
-    } else {
-      _routeEnteredOrUpdatedViaManager(route);
-    }
-
-    return true;
   }
 
   /**
@@ -608,7 +433,9 @@ export default abstract class Router<R extends Route> {
 
   @return {Partition}
 */
-  private partitionRoutes(oldState: TransitionState<R>, newState: TransitionState<R>) {
+  // Public so EmberRouter can call it via _routerMicrolib when orchestrating
+  // onRouteInvokableReady and onIntermediateTransition. Previously private.
+  partitionRoutes(oldState: TransitionState<R>, newState: TransitionState<R>) {
     let oldRouteInfos = oldState.routeInfos;
     let newRouteInfos = newState.routeInfos;
 
@@ -656,7 +483,8 @@ export default abstract class Router<R extends Route> {
     return routes;
   }
 
-  private _updateURL(transition: OpaqueTransition, state: TransitionState<R>) {
+  // Public so EmberRouter can call it via _routerMicrolib after awaiting enter() promises.
+  _updateURL(transition: OpaqueTransition, state: TransitionState<R>) {
     let urlMethod: string | null = transition.urlMethod;
 
     if (!urlMethod) {
@@ -719,7 +547,8 @@ export default abstract class Router<R extends Route> {
     }
   }
 
-  private finalizeQueryParamChange(
+  // Public so EmberRouter can call it via _routerMicrolib as part of transition settlement.
+  finalizeQueryParamChange(
     resolvedHandlers: InternalRouteInfo<R>[],
     newQueryParams: Dict<unknown>,
     transition: OpaqueTransition
@@ -950,9 +779,16 @@ export default abstract class Router<R extends Route> {
       queryParams = partitionedArgs[1];
 
     // Construct a TransitionIntent with the provided params
-    // and apply it to the present state of the router.
+    // and apply it to the present state of the router. During an active
+    // transition (e.g. while a loading substate is rendering), the active
+    // transition's state holds the partially resolved route hierarchy and
+    // is the correct baseline for URL generation. Without this, link-to
+    // helpers rendered inside a loading substate fail to compute their href
+    // because microlib.state has not been updated yet (state assignment only
+    // happens in onTransitionSettled).
+    let baseState = (this.activeTransition && this.activeTransition[STATE_SYMBOL]) || this.state!;
     let intent = new NamedTransitionIntent(this, routeName, undefined, suppliedParams);
-    let state = intent.applyToState(this.state!, false);
+    let state = intent.applyToState(baseState, false);
 
     let params: Params = {};
     for (let i = 0, len = state.routeInfos.length; i < len; ++i) {

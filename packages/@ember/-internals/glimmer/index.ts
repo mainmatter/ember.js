@@ -498,3 +498,4 @@ export {
 } from './lib/utils/managers';
 export { isSerializationFirstNode } from './lib/utils/serialization-first-node-helpers';
 export { uniqueId } from './lib/helpers/unique-id';
+export { makeRouteTemplate } from './lib/component-managers/route-template';

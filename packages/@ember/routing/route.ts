@@ -781,6 +781,29 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler, Evented) 
   }
 
   /**
+    Resolve and assign this route's controller eagerly. Used by the route
+    manager during getInvokable so that the controller is available when the
+    route template renders, before didEnter/setup runs. Idempotent, calling
+    setup() later will see this.controller is set and skip the assignment.
+
+    @private
+    @method _initController
+   */
+  _initController() {
+    if (this.controller) {
+      return this.controller;
+    }
+    let controllerName = this.controllerName || this.routeName;
+    let definedController = this.controllerFor(controllerName, true);
+    let controller = definedController ?? this.generateController(controllerName);
+    let queryParams = get(this, '_qp') as Route<Model>['_qp'];
+    let propNames = queryParams.propertyNames;
+    addQueryParamsObservers(controller, propNames);
+    this.controller = controller;
+    return controller;
+  }
+
+  /**
     @private
 
     @method enter

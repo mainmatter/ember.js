@@ -46,8 +46,11 @@ export interface AsyncNavigationState {
   /** Signal for the current navigation */
   signal?: AbortSignal;
 
-  /** Retrieve the ancestor promise for an ancestor route, to await async ancestor behaviour. */
-  getAncestorPromise(routeInfo: RouteInfo): ReturnType<RouteManager<RouteStateBucket>['enter']>;
+  /**
+   * Retrieve the ancestor promise for an ancestor route, to await async ancestor behaviour.
+   * If no routeInfo is passed, returns the immediate parent route's promise.
+   */
+  getAncestorPromise(routeInfo?: RouteInfo): ReturnType<RouteManager<RouteStateBucket>['enter']>;
 }
 
 export interface NavigationStateWithTransition extends NavigationState {

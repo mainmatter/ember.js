@@ -4,9 +4,12 @@ import { debugAssert } from '@glimmer/global-context';
 
 export interface RouteStateBucket {
   invokable?: object;
-  route?: object & { manager: RouteManager<RouteStateBucket> };
-  context?: unknown;
+  instance?: unknown;
   args: object;
+  // Set by the router synchronously after calling manager.enter(), before awaiting it.
+  // This makes the promise available to getAncestorPromise on child routes, which need
+  // to await their parent's data loading before starting their own.
+  enterPromise?: Promise<unknown>;
 }
 
 const ROUTE_MANAGERS = new WeakMap<object, ManagerFactory<any, RouteManager<any>>>();

@@ -5,7 +5,7 @@ import { DEBUG } from '@glimmer/env';
 import { hasInternalComponentManager } from '@glimmer/manager';
 import type { CurriedComponent, Destroyable, Template, TemplateFactory } from '@glimmer/interfaces';
 import type { Reference } from '@glimmer/reference';
-import { createComputeRef } from '@glimmer/reference';
+import { createComputeRef, createConstRef } from '@glimmer/reference';
 import { createCapturedArgs, curry, EMPTY_POSITIONAL } from '@glimmer/runtime';
 import { dict } from '@glimmer/util';
 import { tracked } from '@glimmer/tracking';
@@ -23,23 +23,31 @@ import type {
 } from './route-manager';
 import { routeCapabilities } from './route-manager';
 import type { RouteStateBucket } from './utils';
-import { once } from '@ember/runloop';
+import { cancel, scheduleOnce } from '@ember/runloop';
 import { Promise } from 'rsvp';
+import type { InternalRouteInfo } from 'router_js';
+import { STATE_SYMBOL } from 'router_js';
 
 // --- Bucket ---
 
 export class ClassicRouteBucket implements RouteStateBucket {
   route: Route;
-  @tracked context: unknown;
-  controller: unknown;
-  invokable: object | undefined;
   args: CreateRouteArgs;
+
+  @tracked context: unknown = undefined;
+  controller: unknown = undefined;
+  invokable: object | undefined = undefined;
+  // Populated by the router immediately after calling manager.enter(), so that
+  // child routes can await the parent's data resolution via getAncestorPromise.
+  enterPromise: Promise<unknown> | undefined = undefined;
+  // Timer handle for any pending loading substate transition scheduled during
+  // willEnter. Stored per-bucket so that concurrent routes each track their
+  // own timer and didEnter can cancel the right one without clobbering another
+  // route's timer.
+  loadingSubstateTimer: unknown = null;
 
   constructor(route: Route, args: CreateRouteArgs) {
     this.route = route;
-    this.context = undefined;
-    this.controller = undefined;
-    this.invokable = undefined;
     this.args = args;
   }
 }
@@ -140,8 +148,118 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
     return typeof obj === 'object' && obj !== null && (obj as any).isTransition === true;
   }
 
-  willEnter(_bucket: ClassicRouteBucket, _args: NavigationState & NavigationActions): void {
-    // No-op for classic routes
+  willEnter(
+    bucket: ClassicRouteBucket,
+    args: NavigationState & NavigationActions & NavigationStateWithTransition
+  ): void {
+    const transition = args.transition;
+
+    if (!transition.isActive) {
+      return;
+    }
+
+    // Schedule the loading substate detection on the 'routerTransitions' queue.
+    // We do not look up the substate name here. Looking up factoryFor a missing
+    // template (e.g. on a fast initial visit where no loading template is added)
+    // poisons the registry's _failSet, so subsequent factoryFor calls return
+    // undefined even after the template is registered. Deferring the lookup until
+    // the timer fires mirrors the original _scheduleLoadingEvent timing and lets
+    // any addTemplate calls in the test setup land before we look anything up.
+    bucket.loadingSubstateTimer = scheduleOnce(
+      'routerTransitions',
+      this,
+      this._enterLoadingSubstate,
+      bucket,
+      transition
+    );
+  }
+
+  private _enterLoadingSubstate(bucket: ClassicRouteBucket, transition: any): void {
+    if (!bucket.loadingSubstateTimer || !transition.isActive) {
+      return;
+    }
+    bucket.loadingSubstateTimer = null;
+
+    // Walk up the route tree starting from this bucket's route to find a loading
+    // substate. Mirrors the original defaultActionHandlers.loading + forEachRouteAbove
+    // which received routeInfos sliced to the currently resolving route, not the
+    // full transition.
+    //   - For the slow route itself, only check substate form (foo_loading). The
+    //     state form (foo.loading) is its own child, technically below where we are.
+    //   - For ancestor routes, check both state form (foo.loading) and substate
+    //     form (foo_loading).
+    //   - Stop at the pivot route, do not bubble higher.
+    const routeInfos = transition[STATE_SYMBOL]?.routeInfos ?? [];
+    const pivotHandler = transition.pivotHandler;
+
+    let slowRouteInfo: InternalRouteInfo<Route> | undefined;
+    for (const candidate of routeInfos) {
+      if (candidate?.route === bucket.route) {
+        slowRouteInfo = candidate;
+        break;
+      }
+    }
+    const slowIndex = slowRouteInfo ? routeInfos.indexOf(slowRouteInfo) : -1;
+    const startIndex = slowIndex >= 0 ? slowIndex : routeInfos.length - 1;
+
+    let loadingSubstateName = '';
+    for (let i = startIndex; i >= 0; i--) {
+      const ancestorRouteInfo = routeInfos[i];
+      const ancestorRoute = ancestorRouteInfo?.route;
+      if (!ancestorRoute) continue;
+
+      const ancestorOwner = getOwner(ancestorRoute);
+      assert('Route is unexpectedly missing an owner', ancestorOwner);
+
+      // Skip the state route check (foo.loading) for the slow route itself,
+      // since that would be a child route and below where we are.
+      if (ancestorRouteInfo !== slowRouteInfo) {
+        loadingSubstateName = this._findRouteStateName(ancestorRoute, ancestorOwner, 'loading');
+        if (loadingSubstateName) break;
+      }
+
+      loadingSubstateName = this._findRouteSubstateName(ancestorRoute, ancestorOwner, 'loading');
+      if (loadingSubstateName) break;
+
+      if (pivotHandler === ancestorRoute) break;
+    }
+
+    if (!loadingSubstateName) {
+      return;
+    }
+
+    bucket.route._router.intermediateTransitionTo(loadingSubstateName);
+  }
+
+  // Checks whether a substate route of the form `routeName_state` exists.
+  private _findRouteSubstateName(route: Route, owner: Owner, state: string): string {
+    const { routeName, fullRouteName, _router: router } = route;
+    const substateName = `${routeName}_${state}`;
+    const substateNameFull = `${fullRouteName}_${state}`;
+    return this._routeHasBeenDefined(owner, router, substateName, substateNameFull)
+      ? substateNameFull
+      : '';
+  }
+
+  // Checks whether a state route of the form `routeName.state` exists.
+  private _findRouteStateName(route: Route, owner: Owner, state: string): string {
+    const { routeName, fullRouteName, _router: router } = route;
+    const stateName = routeName === 'application' ? state : `${routeName}.${state}`;
+    const stateNameFull = fullRouteName === 'application' ? state : `${fullRouteName}.${state}`;
+    return this._routeHasBeenDefined(owner, router, stateName, stateNameFull) ? stateNameFull : '';
+  }
+
+  // A route is defined if the router has the route AND the owner has a template or route class.
+  private _routeHasBeenDefined(
+    owner: Owner,
+    router: any,
+    localName: string,
+    fullName: string
+  ): boolean {
+    const routerHasRoute = router.hasRoute(fullName);
+    const ownerHasRoute =
+      owner.factoryFor(`template:${localName}`) || owner.factoryFor(`route:${localName}`);
+    return Boolean(routerHasRoute && ownerHasRoute);
   }
 
   enter(
@@ -181,9 +299,15 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
   }
 
   didEnter(bucket: ClassicRouteBucket, _args: NavigationState): void {
+    // Cancel the pending loading substate if enter() resolved before it fired.
+    if (bucket.loadingSubstateTimer) {
+      cancel(bucket.loadingSubstateTimer as any);
+      bucket.loadingSubstateTimer = null;
+    }
+
     let route = bucket.route;
     let context = bucket.context;
-    // Extract transition and enter flag from args (passed by router_js)
+    // Extract transition and enter flag from args (passed by EmberRouter.onTransitionSettled)
     let transition = (_args as any).transition;
     let enter = (_args as any).enter;
 
@@ -203,13 +327,14 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
       route.setup(context, transition!);
     }
 
-    // Sync the controller onto the bucket so that the
-    // the invokable (see getInvokable) picks it up.
+    // Re-sync controller in case setup() did anything unusual. Normally the
+    // controller is the same instance _initController set during getInvokable.
     bucket.controller = route.controller;
 
-    if (route._environment?.options?.shouldRender !== false) {
-      once(route._router, '_setOutlets');
-    }
+    // _setOutlets is no longer scheduled here. Rendering is driven by
+    // onRouteInvokableReady in EmberRouter, which fires as soon as getInvokable()
+    // resolves, before enter() finishes. By the time didEnter runs, the outlet is
+    // already rendering the route template with the reactive @model and @controller refs.
   }
 
   // --- Exit lifecycle ---
@@ -239,9 +364,23 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
   // --- Template/Component lookup ---
 
   getInvokable(bucket: ClassicRouteBucket): Promise<object | undefined> {
-    // Return cached invokable if already built
+    // Build the invokable synchronously, then gate on enterPromise. Awaiting
+    // enterPromise ensures onRouteInvokableReady does not fire until data is
+    // loaded, whether this is a fresh entry or a re-entry where the model hook
+    // runs again. During the wait, the deferred scheduleOnce in willEnter fires
+    // and enters the loading substate. Once enter() resolves, the invokable is
+    // returned and the real route renders, replacing the loading substate.
+    const invokable = this._buildInvokable(bucket);
+    return (bucket.enterPromise || Promise.resolve()).then(() => invokable);
+  }
+
+  // Synchronous invokable construction. Used by getInvokable above and directly
+  // by EmberRouter.onIntermediateTransition for substate routes which have no
+  // async work and need their didEnter (and therefore activate) to fire before
+  // routeWillChange events.
+  _buildInvokable(bucket: ClassicRouteBucket): object {
     if (bucket.invokable !== undefined) {
-      return Promise.resolve(bucket.invokable);
+      return bucket.invokable;
     }
 
     let route = bucket.route;
@@ -262,7 +401,7 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
     if (templateFactoryOrComponent) {
       if (hasInternalComponentManager(templateFactoryOrComponent)) {
         // ComponentLike - use directly, will be curried below.
-        // Not resolved yet — the VM needs to look up its definition.
+        // Not resolved yet, the VM needs to look up its definition.
         component = templateFactoryOrComponent;
         isResolved = false;
       } else {
@@ -301,18 +440,22 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
       component = makeRouteTemplate(owner, name, template as Template);
     }
 
-    // Create refs that read from the bucket. The bucket fields are populated
-    // later (context during enter(), controller during didEnter()), so these
-    // refs start as undefined and resolve lazily.
-    //
-    // Controller: a tag-free compute ref. It's read lazily (first read happens
-    // during rendering, after didEnter has set bucket.controller).
-    //
-    // Model: bucket.context is @tracked, so this compute ref auto-tracks it
-    // and re-evaluates when the model changes (e.g. navigating to the same
+    // Resolve the controller eagerly (looking up or generating it) so that
+    // bucket.controller is set before the route template renders. This is
+    // required because LinkTo (and other internal components) assert the
+    // caller reference is const, which forces us to curry @controller as a
+    // const ref. setup() called later in didEnter is idempotent and will skip
+    // the assignment when this.controller is already set.
+    let controller = (route as any)._initController();
+    bucket.controller = controller;
+
+    // Create curry args. Controller is a const ref because the controller
+    // is a singleton per owner and never changes for the route's lifetime.
+    // Model is a compute ref over bucket.context (which is @tracked) so the
+    // template re-renders when the model changes (e.g. navigating to the same
     // route with different dynamic segments).
     let named = dict<Reference>();
-    named['controller'] = createComputeRef(() => bucket.controller);
+    named['controller'] = createConstRef(controller, 'controller');
     named['model'] = createComputeRef(() => bucket.context);
 
     let args = createCapturedArgs(named, EMPTY_POSITIONAL);
@@ -323,6 +466,7 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
     let invokable = curry(0 as CurriedComponent, component, owner, args, isResolved);
 
     bucket.invokable = invokable;
-    return Promise.resolve(invokable);
+
+    return invokable;
   }
 }

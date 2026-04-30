@@ -251,6 +251,19 @@ export default class InternalRouteInfo<R extends Route> {
   }
 
   resolve(transition: InternalTransition<R>): Promise<this> {
+    if (this.isResolved) {
+      // Fast path for re-entered routes. When named-transition-intent reuses this
+      // routeInfo as oldHandlerInfo on a subsequent transition, we skip the full
+      // resolveViaManager pass (no willEnter, no enter()) and just stash the
+      // already-resolved context onto the new transition so downstream consumers
+      // (e.g. modelFor()) see it. Mirrors what ResolvedRouteInfo.resolve does on
+      // becomeResolved-produced instances, without needing to build one.
+      if (transition && transition.resolvedModels) {
+        transition.resolvedModels[this.name] = this.context as ModelFor<R> | undefined;
+      }
+      return Promise.resolve(this);
+    }
+
     return Promise.resolve(this.routePromise)
       .then((route: Route) => {
         throwIfAborted(transition);
@@ -311,9 +324,7 @@ export default class InternalRouteInfo<R extends Route> {
         // enter() (e.g. to render a loading state immediately) will have the
         // routeInfo's context still undefined at the time enter() finishes;
         // the bucket is the authoritative source.
-        return ancestorEnterPromise.then(
-          () => matched!.route?.bucket?.context ?? matched!.context
-        );
+        return ancestorEnterPromise.then(() => matched!.route?.bucket?.context ?? matched!.context);
       },
     };
 
@@ -351,16 +362,6 @@ export default class InternalRouteInfo<R extends Route> {
       transition[PARAMS_SYMBOL] = transition[PARAMS_SYMBOL] || {};
       transition[PARAMS_SYMBOL][this.name] = this.params;
 
-      // Patch resolve() on this instance so subsequent transitions skip resolveViaManager.
-      // When named-transition-intent reuses this routeInfo as oldHandlerInfo, the patched
-      // resolve() returns immediately without re-running willEnter or enter(). This avoids
-      // the need for a separate ResolvedRouteInfo class while preserving the same behaviour.
-      this.resolve = (t: InternalTransition<R>) => {
-        if (t && t.resolvedModels) {
-          t.resolvedModels[this.name] = this.context as ModelFor<R> | undefined;
-        }
-        return Promise.resolve(this);
-      };
       return this;
     }) as unknown as Promise<this>;
   }

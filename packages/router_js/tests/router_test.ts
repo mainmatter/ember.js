@@ -1428,14 +1428,16 @@ scenarios.forEach(function (scenario) {
       post: createHandler('post', {
         model() {
           redirected1 = true;
-          router.transitionTo('/foo/bar');
+          // The redirect aborts this transition, swallow the rejection so it
+          // does not surface as an unhandled rejection in the full test suite.
+          ignoreTransitionError(router.transitionTo('/foo/bar'));
         },
       }),
       foo: createHandler('foo', {
         model() {
           redirected1 = false;
           redirected2 = true;
-          router.transitionTo('/ok');
+          ignoreTransitionError(router.transitionTo('/ok'));
         },
       }),
       ok: createHandler('ok'),
@@ -1517,7 +1519,9 @@ scenarios.forEach(function (scenario) {
       post: createHandler('post', {
         model() {
           redirected = true;
-          router.transitionTo('/foo/bar');
+          // foo.model aborts this redirect transition, swallow the rejection
+          // so it does not surface as an unhandled rejection in the full suite.
+          ignoreTransitionError(router.transitionTo('/foo/bar'));
         },
       }),
       foo: createHandler('foo', {
@@ -1764,7 +1768,10 @@ scenarios.forEach(function (scenario) {
       post: createHandler('post', {
         model() {
           redirected = true;
-          router.transitionTo('/foo/bar');
+          // foo.model throws, errorHandled branch in transitionDidError returns
+          // the transition itself which becomes the rejection value, swallow it
+          // so it does not surface as an unhandled rejection in the full suite.
+          ignoreTransitionError(router.transitionTo('/foo/bar'));
         },
       }),
       foo: createHandler('foo', {

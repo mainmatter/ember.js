@@ -42,8 +42,13 @@ function resolveOneRouteInfo<R extends Route>(
   }
 
   let routeInfo = currentState.routeInfos[transition.resolveIndex]!;
+  // Capture whether the routeInfo was already resolved BEFORE this resolve
+  // pass began. When named-transition-intent reuses an oldHandlerInfo, its
+  // isResolved is already true (set on a prior transition); we use this flag
+  // to decide whether redirect should fire in proceed.
+  let wasAlreadyResolved = routeInfo.isResolved;
 
-  let callback = proceed.bind(null, currentState, transition) as (
+  let callback = proceed.bind(null, currentState, transition, wasAlreadyResolved) as (
     readyRouteInfo: InternalRouteInfo<R>
   ) => void | Promise<void>;
 
@@ -53,6 +58,7 @@ function resolveOneRouteInfo<R extends Route>(
 function proceed<R extends Route>(
   currentState: TransitionState<R>,
   transition: Transition<R>,
+  wasAlreadyResolved: boolean,
   readyRouteInfo: InternalRouteInfo<R>
 ): void | Promise<void> {
   const routeIndex = transition.resolveIndex;
@@ -62,12 +68,14 @@ function proceed<R extends Route>(
   // this to place the route at routeIndex in currentRouteInfos, replacing any
   // loading/error substate that was entered for this position, and schedules
   // _setOutlets so the outlet tree is updated before enter() finishes.
-  transition.router.onRouteInvokableReady(readyRouteInfo, transition, routeIndex);
+  // Guard against fake/synthetic transitions used in tests that don't have a
+  // router reference; those transitions don't drive any rendering anyway.
+  transition.router?.onRouteInvokableReady?.(readyRouteInfo, transition, routeIndex);
 
-  // Skip redirect for intermediate transitions (loading/error substates). Their
-  // routeInfos come from applyToState already resolved and never run the model
-  // hook in this transition, so a redirect callback would be inappropriate.
-  if (!transition.isIntermediate) {
+  // Skip redirect for intermediate transitions (loading/error substates), and
+  // for routes that were already resolved on a prior transition. Mirrors the
+  // original transition-state proceed which gated redirect on `!wasAlreadyResolved`.
+  if (!transition.isIntermediate && !wasAlreadyResolved) {
     // Call the redirect hook now that the route's model has resolved. Calling
     // it here, between resolution and the next route's resolution, lets a
     // redirect into a child route skip re-running this route's model hook.

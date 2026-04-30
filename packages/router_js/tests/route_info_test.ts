@@ -54,35 +54,33 @@ QUnit.test('RouteInfo can be aborted mid-resolve', function (assert) {
     });
 });
 
-QUnit.test('RouteInfo#resolve resolves with a ResolvedRouteInfo', function (assert) {
+QUnit.test('RouteInfo#resolve resolves isResolved on the RouteInfo', function (assert) {
   assert.expect(1);
 
   let routeInfo = createHandlerInfo('stub');
   routeInfo.resolve({} as Transition).then((resolvedRouteInfo) => {
-    assert.ok(resolvedRouteInfo instanceof ResolvedRouteInfo);
+    assert.ok(resolvedRouteInfo.isResolved);
   });
 });
 
-QUnit.test('RouteInfo#resolve runs beforeModel hook on handler', function (assert) {
-  assert.expect(1);
-
+QUnit.test('RouteInfo#resolve runs beforeModel hook on handler', async function (assert) {
+  assert.expect(2);
   let transition = {} as Transition;
-
+  let beforeModelCalled = false;
   let routeInfo = createHandlerInfo('stub', {
     route: createHandler('stub', {
       beforeModel: function (currentTransition: Transition) {
+        beforeModelCalled = true;
         assert.equal(
-          transition,
           currentTransition,
-          'beforeModel was called with the payload we passed to resolve()'
+          transition,
+          'beforeModel was called with the transition passed to resolve()'
         );
       },
     }),
   });
-
-  routeInfo.resolve(transition).then(() => {
-    assert.ok(true, 'routeInfo resolved successfully');
-  });
+  await routeInfo.resolve(transition);
+  assert.true(beforeModelCalled, 'beforeModel was called');
 });
 
 QUnit.test('RouteInfo#resolve runs getModel hook', async function (assert) {

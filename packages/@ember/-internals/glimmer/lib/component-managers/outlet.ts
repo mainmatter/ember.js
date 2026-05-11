@@ -24,6 +24,7 @@ import { unwrapTemplate } from './unwrap-template';
 import type { DynamicScope } from '../renderer';
 import type { OutletState } from '../utils/outlet';
 import type OutletView from '../views/outlet';
+import { RouteInfo } from 'router_js';
 
 function instrumentationPayload(def: OutletDefinitionState) {
   // "main" used to be the outlet name, keeping it around for compatibility
@@ -41,7 +42,16 @@ interface OutletInstanceState {
 export interface OutletDefinitionState {
   ref: Reference<OutletState | undefined>;
   name: string;
+  // The thing the outlet renders. For wrapper-driven routes this is the
+  // invokable returned from `manager.getInvokable` (used as `@Component` on
+  // the wrapper). For the legacy OutletState path (raw template from
+  // `setOutletState`) it is the makeRouteTemplate-wrapped component.
   template: object;
+  // Set on the wrapper-driven path. The outlet helper curries `@Component`
+  // (the invokable) and `@routeInfo` onto `wrapper` at render time.
+  wrapper?: object;
+  invokable?: object;
+  routeInfo?: RouteInfo;
 }
 
 const CAPABILITIES: InternalComponentCapabilities = {

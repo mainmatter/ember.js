@@ -91,16 +91,19 @@ interface RouteManagerLike {
   willExit(bucket: TestRouteBucket, args: NavigationArgs & { isExiting?: boolean }): void;
   exit(bucket: TestRouteBucket, args: NavigationArgs): void;
   didExit(bucket: TestRouteBucket, args: NavigationArgs): void;
-  getInvokable(bucket: TestRouteBucket): Promise<object | undefined>;
+  getRouteWrapper(bucket: TestRouteBucket): object;
+  getInvokable(
+    bucket: TestRouteBucket,
+    enterPromise: Promise<unknown>
+  ): Promise<object | undefined>;
 }
 
-// Bucket carries per-route state during a transition. Mirrors ClassicRouteBucket
-// without ember-side decorators.
+// Bucket carries module-stable per-route state. Mirrors ClassicRouteBucket
+// without ember-side decorators. Per-render data (context, enterPromise) lives
+// on the routeInfo on this branch.
 class TestRouteBucket {
   route: Route;
   args: { name: string };
-  context: unknown = undefined;
-  enterPromise: Promise<unknown> | undefined = undefined;
   invokable: object | undefined = undefined;
 
   constructor(route: Route, args: { name: string }) {
@@ -170,10 +173,6 @@ class TestRouteManager implements RouteManagerLike {
           // up the (possibly new) value rather than the original model.
           return transition?.resolvedModels?.[name] ?? model;
         });
-      })
-      .then((model: unknown) => {
-        bucket.context = model;
-        return model;
       });
   }
 
@@ -181,7 +180,9 @@ class TestRouteManager implements RouteManagerLike {
     const transition = args.transition;
     const routeInfo = args.to;
     const route = (routeInfo?.route ?? bucket.route) as Route<any>;
-    const context = bucket.context;
+    // Read context from the routeInfo. routeInfo is the per-render handle;
+    // bucket.context is being phased out.
+    const context = routeInfo?.context;
 
     if (route) {
       // Fire route.enter() for fresh entries (not for context-updates), mirroring
@@ -221,13 +222,24 @@ class TestRouteManager implements RouteManagerLike {
 
   didExit(_bucket: TestRouteBucket, _args: NavigationArgs): void {}
 
+  // Sentinel wrapper. router_js tests never actually render so the value is
+  // unused, we just need to satisfy the manager interface.
+  getRouteWrapper(_bucket: TestRouteBucket): object {
+    return TEST_WRAPPER_SENTINEL;
+  }
+
   // Gate on enterPromise so the resolution loop stays sequential, mirroring
   // classic behaviour. Most existing tests assume a route's model resolves
   // before its child route's model starts.
-  getInvokable(bucket: TestRouteBucket): Promise<object | undefined> {
-    return (bucket.enterPromise ?? Promise.resolve()).then(() => undefined);
+  getInvokable(
+    _bucket: TestRouteBucket,
+    enterPromise: Promise<unknown>
+  ): Promise<object | undefined> {
+    return (enterPromise ?? Promise.resolve()).then(() => undefined);
   }
 }
+
+const TEST_WRAPPER_SENTINEL = {};
 
 const SHARED_TEST_MANAGER = new TestRouteManager();
 
@@ -303,14 +315,7 @@ export class TestRouter<R extends Route = Route> extends Router<R> {
 
     const fireDidEnter = (routeInfo: any, route: any) => {
       if (!route?.manager) return;
-      if (
-        route.manager.capabilities?.classicInterop &&
-        routeInfo.context !== undefined &&
-        route.bucket
-      ) {
-        route.bucket.context = routeInfo.context;
-      }
-      route.manager.didEnter(route.bucket, { transition, enter: true } as any);
+      route.manager.didEnter(route.bucket, { transition, to: routeInfo, enter: true } as any);
     };
 
     for (const routeInfo of partition.entered) {
@@ -355,9 +360,7 @@ export class TestRouter<R extends Route = Route> extends Router<R> {
     // Filter exited routes out of currentRouteInfos. Cannot truncate to
     // unchanged.length because onRouteInvokableReady may have already written
     // entering routes at higher indices.
-    const exitedRouteObjects = new Set(
-      partition.exited.map((ri: any) => ri.route)
-    );
+    const exitedRouteObjects = new Set(partition.exited.map((ri: any) => ri.route));
     if (this.currentRouteInfos) {
       this.currentRouteInfos = this.currentRouteInfos.filter(
         (cri: any) => !exitedRouteObjects.has(cri.route)
@@ -380,10 +383,8 @@ export class TestRouter<R extends Route = Route> extends Router<R> {
     // global RSVP unhandled rejection handler.
     const enteringRouteInfos = [...partition.entered, ...partition.updatedContext];
     const enterPromises = enteringRouteInfos.map((routeInfo: any) => {
-      const p = routeInfo.route?.bucket?.enterPromise ?? Promise.resolve(undefined);
-      return (p as any).catch
-        ? (p as any).catch(() => undefined)
-        : p;
+      const p = routeInfo.enterPromise ?? Promise.resolve(undefined);
+      return (p as any).catch ? (p as any).catch(() => undefined) : p;
     });
 
     return (Promise as any).all(enterPromises).then(() => {
@@ -393,16 +394,9 @@ export class TestRouter<R extends Route = Route> extends Router<R> {
         for (const enteredRouteInfo of partition.entered) {
           const route = (enteredRouteInfo as any).route;
           if (!route) continue;
-
-          if (
-            route.manager?.capabilities?.classicInterop &&
-            (enteredRouteInfo as any).context !== undefined &&
-            route.bucket
-          ) {
-            (route.bucket as any).context = (enteredRouteInfo as any).context;
-          }
           route.manager.didEnter(route.bucket, {
             transition: activeTransition,
+            to: enteredRouteInfo,
             enter: true,
           } as any);
         }
@@ -410,16 +404,9 @@ export class TestRouter<R extends Route = Route> extends Router<R> {
         for (const updatedRouteInfo of partition.updatedContext) {
           const route = (updatedRouteInfo as any).route;
           if (!route) continue;
-
-          if (
-            route.manager?.capabilities?.classicInterop &&
-            (updatedRouteInfo as any).context !== undefined &&
-            route.bucket
-          ) {
-            (route.bucket as any).context = (updatedRouteInfo as any).context;
-          }
           route.manager.didEnter(route.bucket, {
             transition: activeTransition,
+            to: updatedRouteInfo,
             enter: false,
           } as any);
         }

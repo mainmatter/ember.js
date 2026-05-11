@@ -66,7 +66,7 @@ export interface CreateRouteArgs {
 export interface RouteManager<R extends RouteStateBucket> {
   capabilities: RouteCapabilities;
 
-  createRoute(definition: object, args: CreateRouteArgs): R;
+  createRoute(factory: object, args: CreateRouteArgs): R;
   getDestroyable(bucket: R): Destroyable | null;
 
   willEnter(
@@ -86,7 +86,23 @@ export interface RouteManager<R extends RouteStateBucket> {
   exit(bucket: R, args: NavigationState & NavigationStateWithTransition): void;
   didExit(bucket: R, args: NavigationState & NavigationStateWithTransition): void;
 
-  getInvokable(bucket: R): Promise<object | undefined>;
+  /**
+   * Returns a module-stable wrapper component the router curries the
+   * per-render invokable into. The same value should be returned for every
+   * call with the same bucket (and ideally for every bucket sharing the same
+   * underlying route definition). The router curries `@Component` (the
+   * invokable from getInvokable) and the model and controller onto it; managers
+   * may use either of those args to derive whatever they need to render.
+   */
+  getRouteWrapper(bucket: R): object;
+
+  /**
+   * Called per transition. The `enterPromise` arg is the promise returned from
+   * the matching call to `enter()`. Managers may await it (classic, to gate
+   * rendering on data load) or ignore it (pioneer-style, to render immediately
+   * and let the wrapper component coordinate loading state).
+   */
+  getInvokable(bucket: R, enterPromise: Promise<unknown>): Promise<object | undefined>;
 }
 
 // --- Factory type ---

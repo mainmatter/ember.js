@@ -539,6 +539,10 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
         router.onIntermediateTransition(newState, transition);
       }
 
+      onRouteContextSettled(routeInfo: InternalRouteInfo<Route>): void {
+        router.onRouteContextSettled(routeInfo);
+      }
+
       onTransitionSettled(
         transition: InternalTransition<Route>,
         newState: TransitionState<Route>
@@ -672,6 +676,19 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
     once(this as any, '_setOutlets');
   }
 
+  onRouteContextSettled(_routeInfo: InternalRouteInfo<Route>): void {
+    // A route's enterPromise has resolved and routeInfo.context is now the
+    // real value. Schedule a re-render so the outlet helper's @model arg
+    // (a path ref through outletStateTag) picks up the new context. Without
+    // this, render-immediate managers (where getInvokable resolves before
+    // enter()) would show @model=undefined until the whole transition
+    // settles.
+    if (this.isDestroying || this.isDestroyed) {
+      return;
+    }
+    once(this as any, '_setOutlets');
+  }
+
   onIntermediateTransition(
     newState: TransitionState<Route>,
     transition: InternalTransition<Route>
@@ -723,19 +740,9 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
         }
       }
 
-      // Sync routeInfo.context to bucket before didEnter so classic setup()
-      // and activate() see the correct model. For error substates this is the
-      // error object passed via intermediateTransitionTo(name, error).
-      if (
-        route.manager.capabilities.classicInterop &&
-        routeInfo.context !== undefined &&
-        route.bucket
-      ) {
-        (route.bucket as any).context = routeInfo.context;
-      }
-
       route.manager.didEnter(route.bucket, {
         transition,
+        to: routeInfo,
         enter: true,
       } as any);
     }
@@ -792,9 +799,6 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
       }
     }
 
-    activeTransition.isActive = false;
-    microlib.activeTransition = undefined;
-
     // Collect the enter() promises from all entering and context-updating routes.
     // These were fired during resolveViaManager and stored on each bucket.
     // Swallow rejections with .catch: a rejected enterPromise means the transition
@@ -803,15 +807,30 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
     // transitions that include the same route in their partition.entered.
     const enteringRouteInfos = [...partition.entered, ...partition.updatedContext];
     const enterPromises = enteringRouteInfos.map((routeInfo) => {
-      const p = routeInfo.route?.bucket?.enterPromise ?? RSVPPromise.resolve(undefined);
+      const p = routeInfo.enterPromise ?? RSVPPromise.resolve(undefined);
       return p.catch(() => undefined);
     });
+
+    // Keep the transition marked as active until the enter promises resolve.
+    // Without this, a click during the data-loading phase (after getInvokable
+    // resolved but before enter() resolved) would not see an active transition
+    // to abort, so the in-flight enter() would settle and stomp the new
+    // transition's render state with stale data.
 
     // Once all data loading is done, fire the post-data lifecycle hooks.
     // The returned promise becomes part of the transition's promise chain
     // (see Router.transitionByIntent in router_js), so an error here rejects
     // the transition and propagates out to e.g. application.visit's caller.
     return RSVPPromise.all(enterPromises).then(() => {
+      activeTransition.isActive = false;
+      // Only clear activeTransition if it is still us. A click during the
+      // enter-loading phase will have replaced microlib.activeTransition with
+      // a newer transition (and aborted us via redirect()); we must not clear
+      // that newer transition here.
+      if (microlib.activeTransition === activeTransition) {
+        microlib.activeTransition = undefined;
+      }
+
       // Guard against the app being destroyed between when the transition
       // settled and when this async callback fires (e.g. during test teardown).
       if (this.isDestroying || this.isDestroyed) {
@@ -826,20 +845,9 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
         for (const enteredRouteInfo of partition.entered) {
           const route = enteredRouteInfo.route;
           if (route !== undefined) {
-            // Only sync routeInfo.context to the bucket for classic interop routes.
-            // Classic routes store context on the routeInfo via becomeResolved and
-            // need it pushed to the bucket before setup() runs in didEnter.
-            // Non-classic managers own their bucket.context entirely, they set it
-            // inside enter() and we must not overwrite it here.
-            if (
-              route.manager.capabilities.classicInterop &&
-              enteredRouteInfo.context !== undefined &&
-              route.bucket
-            ) {
-              (route.bucket as any).context = enteredRouteInfo.context;
-            }
             route.manager.didEnter(route.bucket, {
               transition: activeTransition,
+              to: enteredRouteInfo,
               enter: true,
             } as any);
           }
@@ -849,15 +857,9 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
         for (const updatedRouteInfo of partition.updatedContext) {
           const route = updatedRouteInfo.route;
           if (route !== undefined) {
-            if (
-              route.manager.capabilities.classicInterop &&
-              updatedRouteInfo.context !== undefined &&
-              route.bucket
-            ) {
-              (route.bucket as any).context = updatedRouteInfo.context;
-            }
             route.manager.didEnter(route.bucket, {
               transition: activeTransition,
+              to: updatedRouteInfo,
               enter: false,
             } as any);
           }
@@ -957,18 +959,28 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
       assert('RouteInfo should have route', route);
 
       let bucket = route.bucket;
-      let template = routeInfo.invokable ?? bucket?.invokable;
+      let invokable = routeInfo.invokable ?? bucket?.invokable;
 
-      assert('Expected route to have an invokable template or component', template !== undefined);
+      assert('Expected route to have an invokable template or component', invokable !== undefined);
 
       let routeOwner = getInternalOwner(route);
 
       assert('Route is unexpectedly missing an owner', routeOwner);
 
+      // Module-stable wrapper component returned from the manager. The outlet
+      // helper curries the invokable + routeInfo onto this at render time.
+      // RenderState.template is intentionally not set here: the outlet helper's
+      // wrapper-driven path reads `render.invokable` directly. The legacy
+      // `template` field on RenderState only services consumers that build
+      // OutletState manually (e.g. older @ember/test-helpers, liquid-fire).
+      let wrapper = route.manager.getRouteWrapper(route.bucket);
+
       let render = {
         owner: routeOwner,
         name: route.routeName,
-        template,
+        wrapper,
+        invokable,
+        routeInfo: routeInfo as unknown as object,
       };
 
       let state: OutletState = {

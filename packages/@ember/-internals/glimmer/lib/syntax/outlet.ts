@@ -8,9 +8,14 @@ import type {
   Template,
 } from '@glimmer/interfaces';
 import type { Reference } from '@glimmer/reference';
-import { createComputeRef, createConstRef, valueForRef } from '@glimmer/reference';
+import {
+  childRefFromParts,
+  createComputeRef,
+  createConstRef,
+  valueForRef,
+} from '@glimmer/reference';
 import type { CurriedValue } from '@glimmer/runtime';
-import { createCapturedArgs, curry, EMPTY_POSITIONAL, isCurriedValue } from '@glimmer/runtime';
+import { createCapturedArgs, curry, EMPTY_POSITIONAL } from '@glimmer/runtime';
 import { dict } from '@glimmer/util';
 import { hasInternalComponentManager } from '@glimmer/manager';
 import { OutletComponent, type OutletDefinitionState } from '../component-managers/outlet';
@@ -82,51 +87,90 @@ export const outletHelper = internalHelper(
 
           let named = dict<Reference>();
 
-          // When the route manager provides the invokable, state.template is
-          // already a curried component with @controller and @model baked in.
-          // For backward compatibility (e.g. setOutletState from test helpers),
-          // raw templates and components are wrapped with makeRouteTemplate.
-          let template = state.template;
           let component: object;
 
-          if (isCurriedValue(template) || hasInternalComponentManager(template)) {
-            component = template;
-          } else {
-            if (DEBUG) {
-              // We don't appear to have a standard way or a brand to check, but for the
-              // purpose of avoiding obvious user errors, this probably gets you close
-              // enough.
-              let isTemplate = (template: unknown): template is Template => {
-                if (template === null || typeof template !== 'object') {
-                  return false;
-                } else {
-                  let t = template as Partial<Template>;
-                  return t.result === 'ok' || t.result === 'error';
-                }
-              };
+          // Wrapper-driven path: manager-provided wrapper + uncurried invokable.
+          // Curry the wrapper with @Component (the user's invokable), @routeInfo,
+          // @model, and @controller. The wrapper template uses these to render
+          // the route.
+          if (state.wrapper !== undefined && state.invokable !== undefined) {
+            let wrapperArgs = dict<Reference>();
+            wrapperArgs['Component'] = createConstRef(state.invokable, '@Component');
+            wrapperArgs['routeInfo'] = createConstRef(state.routeInfo as object, '@routeInfo');
 
-              // We made it past the `TemplateFactory` instantiation before
-              // getting here, so either we got unlucky where the invalid type
-              // happens to be a function that didn't mind taking owner as an
-              // argument, or this was directly set by something like test
-              // helpers.
-              if (!isTemplate(template)) {
-                let label: string;
+            // @controller must be a const ref because RouteTemplateManager
+            // uses it as the route template's `self`, which is then passed
+            // as `caller` to inner internal components (LinkTo, Input, etc.)
+            // and those assert isConstRef(caller). Resolve the controller
+            // eagerly here from the route on the routeInfo. The route has an
+            // idempotent _initController that creates or returns the cached
+            // controller instance.
+            let routeForController = (state.routeInfo as { route?: any } | undefined)?.route;
+            let controller = routeForController?._initController?.();
+            wrapperArgs['controller'] = createConstRef(controller, '@controller');
 
-                try {
-                  label = `\`${String(template)}\``;
-                } catch {
-                  label = 'an unknown object';
-                }
-
-                assert(
-                  `Failed to render the \`${state.name}\` route: expected ` +
-                    `a component or Template object, but got ${label}.`
-                );
+            // @model is a compute ref over outletRef.render.routeInfo.context.
+            // The path-based ref consumes outletStateTag; when setOutletState
+            // dirties the tag (each transition / model update), the ref
+            // invalidates and re-reads the new context. Mirrors main's
+            // childRefFromParts(outletRef, ['render', 'model']) pattern with
+            // an extra hop for routeInfo.
+            let modelRef = childRefFromParts(outletRef, ['render', 'routeInfo', 'context']);
+            let model = valueForRef(modelRef);
+            let frozenState = state;
+            wrapperArgs['model'] = createComputeRef(() => {
+              if (lastState === frozenState) {
+                model = valueForRef(modelRef);
               }
-            }
+              return model;
+            });
 
-            component = makeRouteTemplate(outletOwner, state.name, template as Template);
+            // isResolved=false because the wrapper is a "definition state" that
+            // the VM must resolve to a ComponentDefinition via its registered
+            // setComponentTemplate / setInternalComponentManager metadata.
+            component = curry(
+              0 as CurriedComponent,
+              state.wrapper,
+              outletOwner,
+              createCapturedArgs(wrapperArgs, EMPTY_POSITIONAL),
+              false
+            );
+          } else {
+            // Legacy path: raw template or already-resolved component (e.g.
+            // from test helpers calling setOutletState directly).
+            let template = state.template;
+
+            if (hasInternalComponentManager(template)) {
+              component = template;
+            } else {
+              if (DEBUG) {
+                let isTemplate = (template: unknown): template is Template => {
+                  if (template === null || typeof template !== 'object') {
+                    return false;
+                  } else {
+                    let t = template as Partial<Template>;
+                    return t.result === 'ok' || t.result === 'error';
+                  }
+                };
+
+                if (!isTemplate(template)) {
+                  let label: string;
+
+                  try {
+                    label = `\`${String(template)}\``;
+                  } catch {
+                    label = 'an unknown object';
+                  }
+
+                  assert(
+                    `Failed to render the \`${state.name}\` route: expected ` +
+                      `a component or Template object, but got ${label}.`
+                  );
+                }
+              }
+
+              component = makeRouteTemplate(outletOwner, state.name, template as Template);
+            }
           }
 
           named['Component'] = createConstRef(component, '@Component');
@@ -158,6 +202,20 @@ function stateFor(
   if (outlet === undefined) return null;
   let render = outlet.render;
   if (render === undefined) return null;
+
+  // Wrapper-driven path: prefer wrapper + invokable + routeInfo when present.
+  if (render.wrapper !== undefined && render.invokable !== undefined) {
+    return {
+      ref,
+      name: render.name,
+      template: render.invokable,
+      wrapper: render.wrapper,
+      invokable: render.invokable,
+      routeInfo: render.routeInfo,
+    };
+  }
+
+  // Legacy path: raw template, e.g. from setOutletState in tests.
   let template = render.template;
   // The type doesn't actually allow for `null`, but if we make it past this
   // point it is really important that we have _something_ to render. We could
@@ -178,6 +236,11 @@ function isStable(
   if (state === null || lastState === null) {
     return false;
   }
-
+  // Stability hinges on the wrapper identity when wrapper-driven (same
+  // wrapper → outlet stays mounted, wrapper internally re-renders), or on
+  // the template identity for the legacy path.
+  if (state.wrapper !== undefined || lastState.wrapper !== undefined) {
+    return state.wrapper === lastState.wrapper;
+  }
   return state.template === lastState.template;
 }

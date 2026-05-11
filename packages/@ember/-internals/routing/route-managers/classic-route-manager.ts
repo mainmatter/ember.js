@@ -2,14 +2,24 @@ import { getOwner, setOwner } from '@ember/-internals/owner';
 import { assert, info } from '@ember/debug';
 import { get } from '@ember/-internals/metal';
 import { DEBUG } from '@glimmer/env';
-import { hasInternalComponentManager } from '@glimmer/manager';
-import type { CurriedComponent, Destroyable, Template, TemplateFactory } from '@glimmer/interfaces';
+import {
+  hasInternalComponentManager,
+  setComponentTemplate,
+  setInternalComponentManager,
+} from '@glimmer/manager';
+import type {
+  CustomRenderNode,
+  Destroyable,
+  InternalComponentCapabilities,
+  InternalComponentManager,
+  Template,
+  TemplateFactory,
+  WithCustomDebugRenderTree,
+} from '@glimmer/interfaces';
 import type { Reference } from '@glimmer/reference';
-import { createComputeRef, createConstRef } from '@glimmer/reference';
-import { createCapturedArgs, curry, EMPTY_POSITIONAL } from '@glimmer/runtime';
-import { dict } from '@glimmer/util';
-import { tracked } from '@glimmer/tracking';
+import { NULL_REFERENCE } from '@glimmer/reference';
 import { makeRouteTemplate } from '@ember/-internals/glimmer/lib/component-managers/route-template';
+import { precompileTemplate } from '@ember/template-compilation';
 import type Owner from '@ember/owner';
 import type Route from '@ember/routing/route';
 import type {
@@ -34,12 +44,14 @@ export class ClassicRouteBucket implements RouteStateBucket {
   route: Route;
   args: CreateRouteArgs;
 
-  @tracked context: unknown = undefined;
-  controller: unknown = undefined;
+  // Cached invokable returned from getInvokable. Stable for the bucket's
+  // lifetime so the outlet's wrapper-driven rendering can reuse the same
+  // resolved component definition across re-renders without re-resolving the
+  // template.
   invokable: object | undefined = undefined;
-  // Populated by the router immediately after calling manager.enter(), so that
-  // child routes can await the parent's data resolution via getAncestorPromise.
-  enterPromise: Promise<unknown> | undefined = undefined;
+
+  wrapper: object | undefined = undefined;
+
   // Timer handle for any pending loading substate transition scheduled during
   // willEnter. Stored per-bucket so that concurrent routes each track their
   // own timer and didEnter can cancel the right one without clobbering another
@@ -63,6 +75,93 @@ export interface ClassicInteropArgs {
   transition: any;
   routeInfo: any;
 }
+
+// --- Classic route wrapper component ---
+
+/**
+ * Shared wrapper template. We pair this template with a fresh
+ * `ClassicRouteWrapperDefinition` per bucket inside `getRouteWrapper`, so that
+ * two routes (potentially sharing a Route class) get distinct wrapper
+ * component identities for the outlet stability check.
+ *
+ * The wrapper renders the per-render invokable (the route's template/component,
+ * returned from getInvokable) and forwards `@model` and `@controller` onto it.
+ *
+ * The outlet helper curries `@Component`, `@routeInfo`, `@model`, and
+ * `@controller` onto this wrapper at render time, see the outlet pipeline in
+ * `@ember/-internals/glimmer/lib/syntax/outlet`. `@controller` is resolved
+ * there to a const ref, because RouteTemplateManager uses it as the inner
+ * template's `self` and inner internal components (LinkTo, Input, etc.) assert
+ * `isConstRef(caller)`.
+ */
+const CLASSIC_WRAPPER_TEMPLATE = precompileTemplate(
+  `<@Component @model={{@model}} @controller={{@controller}} />`,
+  {
+    moduleName: 'packages/@ember/-internals/routing/route-managers/classic-route-wrapper.hbs',
+    strictMode: true,
+  }
+);
+
+/**
+ * Capabilities for `ClassicRouteWrapperManager`. Match `templateOnlyComponent`'s
+ * defaults: no element, no args capture, no instance state.
+ */
+const CLASSIC_WRAPPER_CAPABILITIES: InternalComponentCapabilities = {
+  dynamicLayout: false,
+  dynamicTag: false,
+  prepareArgs: false,
+  createArgs: false,
+  attributeHook: false,
+  elementHook: false,
+  createCaller: false,
+  dynamicScope: false,
+  updateHook: false,
+  createInstance: false,
+  wrapped: false,
+  willDestroy: false,
+  hasSubOwner: false,
+};
+
+/**
+ * Component manager for the classic wrapper. Functionally identical to glimmer's
+ * `TemplateOnlyComponentManager` except that `getDebugCustomRenderTree` returns
+ * an empty array, so the wrapper does not appear as its own node in the render
+ * tree. This keeps the render-tree shape the same as before the wrapper layer
+ * was introduced.
+ */
+class ClassicRouteWrapperManager
+  implements
+    InternalComponentManager<null, ClassicRouteWrapperDefinition>,
+    WithCustomDebugRenderTree<null, ClassicRouteWrapperDefinition>
+{
+  getCapabilities(): InternalComponentCapabilities {
+    return CLASSIC_WRAPPER_CAPABILITIES;
+  }
+
+  getDebugName(): string {
+    return '';
+  }
+
+  getDebugCustomRenderTree(): CustomRenderNode[] {
+    return [];
+  }
+
+  getSelf(): Reference {
+    return NULL_REFERENCE;
+  }
+
+  getDestroyable(): null {
+    return null;
+  }
+}
+
+const CLASSIC_WRAPPER_MANAGER = new ClassicRouteWrapperManager();
+class ClassicRouteWrapperDefinition {
+  constructor(public name: string) {}
+}
+
+setInternalComponentManager(CLASSIC_WRAPPER_MANAGER, ClassicRouteWrapperDefinition.prototype);
+setComponentTemplate(CLASSIC_WRAPPER_TEMPLATE, ClassicRouteWrapperDefinition.prototype);
 
 // --- ClassicRouteManager ---
 
@@ -290,15 +389,13 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
           return resolvedModel;
         })
         .then((resolvedModel) => this._runAfterModel(route, resolvedModel, transition))
-        .then((resolvedModel) => {
-          bucket.context = resolvedModel;
-
-          return resolvedModel;
-        })
     );
   }
 
-  didEnter(bucket: ClassicRouteBucket, _args: NavigationState): void {
+  didEnter(
+    bucket: ClassicRouteBucket,
+    args: NavigationState & NavigationStateWithTransition
+  ): void {
     // Cancel the pending loading substate if enter() resolved before it fired.
     if (bucket.loadingSubstateTimer) {
       cancel(bucket.loadingSubstateTimer as any);
@@ -306,10 +403,11 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
     }
 
     let route = bucket.route;
-    let context = bucket.context;
-    // Extract transition and enter flag from args (passed by EmberRouter.onTransitionSettled)
-    let transition = (_args as any).transition;
-    let enter = (_args as any).enter;
+    // Read context from the routeInfo (args.to). The routeInfo is the per-render
+    // handle
+    let context = (args.to as any).context;
+    let transition = args.transition;
+    let enter = (args as any).enter;
 
     // Classic enter: activate + trigger 'activate' (only on fresh enter, not updates)
     if (enter) {
@@ -326,10 +424,6 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
     if (route.setup !== undefined) {
       route.setup(context, transition!);
     }
-
-    // Re-sync controller in case setup() did anything unusual. Normally the
-    // controller is the same instance _initController set during getInvokable.
-    bucket.controller = route.controller;
 
     // _setOutlets is no longer scheduled here. Rendering is driven by
     // onRouteInvokableReady in EmberRouter, which fires as soon as getInvokable()
@@ -363,7 +457,22 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
 
   // --- Template/Component lookup ---
 
-  getInvokable(bucket: ClassicRouteBucket): Promise<object | undefined> {
+  getRouteWrapper(bucket: ClassicRouteBucket): object {
+    if (bucket.wrapper !== undefined) {
+      return bucket.wrapper;
+    }
+    // Fresh ClassicRouteWrapperDefinition per bucket so outlet stability
+    // checks (`wrapper === lastWrapper`) correctly distinguish two different
+    // routes which may share a Route class.
+    const wrapper = new ClassicRouteWrapperDefinition(bucket.args.name);
+    bucket.wrapper = wrapper;
+    return wrapper;
+  }
+
+  getInvokable(
+    bucket: ClassicRouteBucket,
+    enterPromise: Promise<unknown>
+  ): Promise<object | undefined> {
     // Build the invokable synchronously, then gate on enterPromise. Awaiting
     // enterPromise ensures onRouteInvokableReady does not fire until data is
     // loaded, whether this is a fresh entry or a re-entry where the model hook
@@ -371,13 +480,16 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
     // and enters the loading substate. Once enter() resolves, the invokable is
     // returned and the real route renders, replacing the loading substate.
     const invokable = this._buildInvokable(bucket);
-    return (bucket.enterPromise || Promise.resolve()).then(() => invokable);
+    return (enterPromise || Promise.resolve()).then(() => invokable);
   }
 
-  // Synchronous invokable construction. Used by getInvokable above and directly
-  // by EmberRouter.onIntermediateTransition for substate routes which have no
-  // async work and need their didEnter (and therefore activate) to fire before
-  // routeWillChange events.
+  // Build the route's user-facing invokable: the user's
+  // route template/component (uncurried). Currying with `@model` and
+  // `@controller` happens in the wrapper component returned from
+  // getRouteWrapper, so this method just looks up the template.
+  //
+  // Synchronous so EmberRouter.onIntermediateTransition can call it directly
+  // for substate routes (loading/error) without awaiting enterPromise.
   _buildInvokable(bucket: ClassicRouteBucket): object {
     if (bucket.invokable !== undefined) {
       return bucket.invokable;
@@ -393,17 +505,13 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
       | object
       | undefined;
 
-    let component: object;
-    // Track whether the component is already a resolved definition (CurriedValue
-    // from makeRouteTemplate) vs a raw component class that needs VM resolution.
-    let isResolved = true;
+    let invokable: object;
 
     if (templateFactoryOrComponent) {
       if (hasInternalComponentManager(templateFactoryOrComponent)) {
-        // ComponentLike - use directly, will be curried below.
-        // Not resolved yet, the VM needs to look up its definition.
-        component = templateFactoryOrComponent;
-        isResolved = false;
+        // ComponentLike, used as the invokable directly. The VM will resolve
+        // its definition when the wrapper renders <@Component />.
+        invokable = templateFactoryOrComponent;
       } else {
         if (DEBUG && typeof templateFactoryOrComponent !== 'function') {
           let label: string;
@@ -422,9 +530,9 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
           );
         }
 
-        // TemplateFactory -> Template -> RouteTemplate (curried component with no args)
+        // TemplateFactory -> Template -> RouteTemplate (component with no args)
         let template = (templateFactoryOrComponent as TemplateFactory)(owner);
-        component = makeRouteTemplate(owner, name, template as Template);
+        invokable = makeRouteTemplate(owner, name, template as Template);
       }
     } else {
       if (DEBUG) {
@@ -437,33 +545,8 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
       }
       // Default {{outlet}} template -> RouteTemplate
       let template = route._topLevelViewTemplate(owner);
-      component = makeRouteTemplate(owner, name, template as Template);
+      invokable = makeRouteTemplate(owner, name, template as Template);
     }
-
-    // Resolve the controller eagerly (looking up or generating it) so that
-    // bucket.controller is set before the route template renders. This is
-    // required because LinkTo (and other internal components) assert the
-    // caller reference is const, which forces us to curry @controller as a
-    // const ref. setup() called later in didEnter is idempotent and will skip
-    // the assignment when this.controller is already set.
-    let controller = (route as any)._initController();
-    bucket.controller = controller;
-
-    // Create curry args. Controller is a const ref because the controller
-    // is a singleton per owner and never changes for the route's lifetime.
-    // Model is a compute ref over bucket.context (which is @tracked) so the
-    // template re-renders when the model changes (e.g. navigating to the same
-    // route with different dynamic segments).
-    let named = dict<Reference>();
-    named['controller'] = createConstRef(controller, 'controller');
-    named['model'] = createComputeRef(() => bucket.context);
-
-    let args = createCapturedArgs(named, EMPTY_POSITIONAL);
-
-    // Curry @controller and @model onto the component so the invokable is
-    // self-contained. The outlet rendering pipeline no longer needs to know
-    // about model or controller.
-    let invokable = curry(0 as CurriedComponent, component, owner, args, isResolved);
 
     bucket.invokable = invokable;
 

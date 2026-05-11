@@ -99,6 +99,15 @@ export default abstract class Router<R extends Route> {
     _transition: InternalTransition<R>
   ): void {}
 
+  // Called when an individual route's enterPromise settles and routeInfo.context
+  // has been updated with the resolved value. EmberRouter overrides this to
+  // schedule _setOutlets so the @model arg downstream of the outlet helper
+  // sees the new context. Without this, routes whose getInvokable resolves
+  // before enter() (pioneer-style render-immediate managers) would render with
+  // a stale undefined model until the entire transition settles.
+  // Default is a no-op so test routers work without changes.
+  onRouteContextSettled(_routeInfo: InternalRouteInfo<R>): void {}
+
   /**
     The main entry point into the router. The API is essentially
     the same as the `map` method in `route-recognizer`.

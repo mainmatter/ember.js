@@ -15,10 +15,10 @@ import type {
 } from '@glimmer/interfaces';
 import type { Nullable } from '@ember/-internals/utility-types';
 import { DEBUG } from '@glimmer/env';
-import { capabilityFlagsFrom } from '@glimmer/manager';
-import type { Reference } from '@glimmer/reference';
-import { createDebugAliasRef, valueForRef } from '@glimmer/reference';
-import { curry, type CurriedValue } from '@glimmer/runtime';
+import { capabilityFlagsFrom } from '@glimmer/manager/lib/util/capabilities';
+import type { Reference } from '@glimmer/reference/lib/reference';
+import { createDebugAliasRef, valueForRef } from '@glimmer/reference/lib/reference';
+import { curry, type CurriedValue } from '@glimmer/runtime/lib/curried-value';
 import { unwrapTemplate } from './unwrap-template';
 
 interface RouteTemplateInstanceState {
@@ -28,7 +28,6 @@ interface RouteTemplateInstanceState {
 
 export interface RouteTemplateDefinitionState {
   name: string;
-  templateName: string;
 }
 
 const CAPABILITIES: InternalComponentCapabilities = {
@@ -79,7 +78,7 @@ class RouteTemplateManager
   }
 
   getDebugCustomRenderTree(
-    { name, templateName }: RouteTemplateDefinitionState,
+    { name }: RouteTemplateDefinitionState,
     state: RouteTemplateInstanceState,
     args: CapturedArguments
   ): CustomRenderNode[] {
@@ -90,7 +89,6 @@ class RouteTemplateManager
         name,
         args,
         instance: state.controller,
-        template: templateName,
       },
     ];
   }
@@ -137,7 +135,7 @@ export class RouteTemplate implements ComponentDefinition<
     // outlet's name. Also, setting this overrides `getDebugName()` in that
     // message. Is that desirable?
     this.resolvedName = name;
-    this.state = { name, templateName: unwrapped.moduleName };
+    this.state = { name };
     this.compilable = unwrapped.asLayout();
   }
 }

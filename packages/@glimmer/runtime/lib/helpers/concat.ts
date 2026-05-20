@@ -1,11 +1,11 @@
 import type { CapturedArguments } from '@glimmer/interfaces';
-import { createComputeRef } from '@glimmer/reference';
+import { createComputeRef } from '@glimmer/reference/lib/reference';
 
 import { reifyPositional } from '../vm/arguments';
 import { internalHelper } from './internal-helper';
 
 const isEmpty = (value: unknown): boolean => {
-  return value === null || value === undefined || typeof (value as object).toString !== 'function';
+  return value === null || value === undefined || typeof value.toString !== 'function';
 };
 
 const normalizeTextValue = (value: unknown): string => {

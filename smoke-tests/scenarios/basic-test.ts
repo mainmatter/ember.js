@@ -210,6 +210,29 @@ function basicTest(scenarios: Scenarios, appName: string) {
                 });
               });
             `,
+            'element-helper-test.gjs': `
+              import { module, test } from 'qunit';
+              import { render } from '@ember/test-helpers';
+              import { setupRenderingTest } from 'ember-qunit';
+              import { element } from '@ember/helper';
+
+              module('Integration | helper | element (strict mode)', function (hooks) {
+                setupRenderingTest(hooks);
+
+                test('it renders a dynamic tag in strict mode gjs', async function (assert) {
+                  await render(
+                    <template>
+                      {{#let (element "h1") as |Tag|}}
+                        <Tag data-test="element-helper">hello world!</Tag>
+                      {{/let}}
+                    </template>
+                  );
+
+                  assert.dom('[data-test="element-helper"]').hasText('hello world!');
+                  assert.dom('h1[data-test="element-helper"]').exists();
+                });
+              });
+            `,
             'interactive-example-test.js': `
               import { module, test } from 'qunit';
               import { setupRenderingTest } from 'ember-qunit';
@@ -319,6 +342,375 @@ function basicTest(scenarios: Scenarios, appName: string) {
                     );
                   });
                   await render(<template><button id="my-id" class="class1 class2" {{on "click" noop}}>Click</button></template>);
+                });
+              });
+            `,
+            'on-as-keyword-test.gjs': `
+              import { module, test } from 'qunit';
+              import { setupRenderingTest } from 'ember-qunit';
+              import { render, click } from '@ember/test-helpers';
+
+              import Component from '@glimmer/component';
+              import { tracked } from '@glimmer/tracking';
+
+              class Demo extends Component {
+                @tracked message = 'hello';
+                louder = () => this.message = this.message + '!';
+
+                <template>
+                  <button {{on 'click' this.louder}}>{{this.message}}</button>
+                </template>
+              }
+
+              module('{{on}} as keyword', function(hooks) {
+                setupRenderingTest(hooks);
+
+                test('it works', async function(assert) {
+                  await render(Demo);
+                  assert.dom('button').hasText('hello');
+                  await click('button');
+                  assert.dom('button').hasText('hello!');
+                });
+              });
+            `,
+            'eq-neq-as-keyword-test.gjs': `
+              import { module, test } from 'qunit';
+              import { setupRenderingTest } from 'ember-qunit';
+              import { render } from '@ember/test-helpers';
+
+              module('{{eq}} / {{neq}} as keywords', function(hooks) {
+                setupRenderingTest(hooks);
+
+                test('it works', async function(assert) {
+                  let a = 1;
+                  let b = 1;
+
+                  await render(
+                    <template>
+                      <span data-eq>{{eq a b}}</span>
+                      <span data-neq>{{neq a b}}</span>
+                    </template>
+                  );
+
+                  assert.dom('[data-eq]').hasText('true');
+                  assert.dom('[data-neq]').hasText('false');
+                });
+
+                test('can be shadowed', async function (assert) {
+                  let a = 1;
+                  let b = 1;
+                  let eq = () => 'surprise:eq';
+                  let neq = () => 'surprise:neq';
+
+                  await render(
+                    <template>
+                      <span data-eq>{{eq a b}}</span>
+                      <span data-neq>{{neq a b}}</span>
+                    </template>
+                  );
+
+                  assert.dom('[data-eq]').hasText('surprise:eq');
+                  assert.dom('[data-neq]').hasText('surprise:neq');
+                });
+              });
+            `,
+            'fn-as-keyword-test.gjs': `
+              import { module, test } from 'qunit';
+              import { setupRenderingTest } from 'ember-qunit';
+              import { render, click } from '@ember/test-helpers';
+
+              import Component from '@glimmer/component';
+              import { tracked } from '@glimmer/tracking';
+
+              class Demo extends Component {
+                @tracked message = 'hello';
+                setMessage = (msg) => this.message = msg;
+
+                <template>
+                  <button {{on 'click' (fn this.setMessage 'goodbye')}}>{{this.message}}</button>
+                </template>
+              }
+
+              module('{{fn}} as keyword', function(hooks) {
+                setupRenderingTest(hooks);
+
+                test('it works', async function(assert) {
+                  await render(Demo);
+                  assert.dom('button').hasText('hello');
+                  await click('button');
+                  assert.dom('button').hasText('goodbye');
+                });
+              });
+            `,
+            'lte-js-scope-polution-test.gjs': `
+              import { module, test } from 'qunit';
+              import { setupRenderingTest } from 'ember-qunit';
+              import { render } from '@ember/test-helpers';
+
+              module('Using {{lte}} in a template should not bleed into outer javascript scope', function(hooks) {
+                setupRenderingTest(hooks);
+
+                test('it works - but it should not', async function(assert) {
+                  let a = 1;
+                  let b = 2;
+
+                  function localLteHelper() {
+                    try {
+                      // this should not be define because it is not imported
+                      return lte(...arguments);
+                    } catch {
+                      return 'WE COULD NOT FIND IT'
+                    }
+                  }
+
+                  await render(
+                    <template>
+                      <span data-local-lte>{{localLteHelper a b}}</span>
+                      <span data-lte>{{lte a a}}</span>
+                    </template>
+                  );
+
+                  assert.dom('[data-local-lte]').hasText('WE COULD NOT FIND IT');
+                  assert.dom('[data-lte]').hasText('true');
+                });
+              });
+            `,
+            'lt-lte-gt-gte-as-keyword-test.gjs': `
+              import { module, test } from 'qunit';
+              import { setupRenderingTest } from 'ember-qunit';
+              import { render } from '@ember/test-helpers';
+
+              module('{{lt}} / {{lte}} / {{gt}} / {{gte}} as keywords', function(hooks) {
+                setupRenderingTest(hooks);
+
+                test('it works', async function(assert) {
+                  let a = 1;
+                  let b = 2;
+
+                  await render(
+                    <template>
+                      <span data-lt>{{lt a b}}</span>
+                      <span data-lte>{{lte a a}}</span>
+                      <span data-gt>{{gt b a}}</span>
+                      <span data-gte>{{gte a a}}</span>
+                    </template>
+                  );
+
+                  assert.dom('[data-lt]').hasText('true');
+                  assert.dom('[data-lte]').hasText('true');
+                  assert.dom('[data-gt]').hasText('true');
+                  assert.dom('[data-gte]').hasText('true');
+                });
+
+                test('can be shadowed', async function (assert) {
+                  let a = 1;
+                  let b = 2;
+                  let lt = () => 'surprise:lt';
+                  let lte = () => 'surprise:lte';
+                  let gt = () => 'surprise:gt';
+                  let gte = () => 'surprise:gte';
+
+                  await render(
+                    <template>
+                      <span data-lt>{{lt a b}}</span>
+                      <span data-lte>{{lte a b}}</span>
+                      <span data-gt>{{gt a b}}</span>
+                      <span data-gte>{{gte a b}}</span>
+                    </template>
+                  );
+
+                  assert.dom('[data-lt]').hasText('surprise:lt');
+                  assert.dom('[data-lte]').hasText('surprise:lte');
+                  assert.dom('[data-gt]').hasText('surprise:gt');
+                  assert.dom('[data-gte]').hasText('surprise:gte');
+                });
+              });
+            `,
+            'element-as-keyword-test.gjs': `
+              import { module, test } from 'qunit';
+              import { setupRenderingTest } from 'ember-qunit';
+              import { render } from '@ember/test-helpers';
+
+              module('{{element}} as keyword', function(hooks) {
+                setupRenderingTest(hooks);
+
+                test('it works', async function(assert) {
+                  await render(
+                    <template>
+                      {{#let (element "h1") as |Tag|}}
+                        <Tag class="greeting">Hello from element keyword</Tag>
+                      {{/let}}
+                    </template>
+                  );
+                  assert.dom('h1.greeting').hasText('Hello from element keyword');
+                });
+
+                test('can be shadowed', async function(assert) {
+                  let element = () => 'surprise';
+                  await render(
+                    <template>
+                      <span data-test>{{element "h1"}}</span>
+                    </template>
+                  );
+                  assert.dom('[data-test]').hasText('surprise');
+                });
+              });
+            `,
+            'fn-as-keyword-but-its-shadowed-test.gjs': `
+              import QUnit, { module, test } from 'qunit';
+              import { setupRenderingTest } from 'ember-qunit';
+              import { render, click } from '@ember/test-helpers';
+
+              import Component from '@glimmer/component';
+              import { tracked } from '@glimmer/tracking';
+
+              module('{{fn}} as keyword (but it is shadowed)', function(hooks) {
+                setupRenderingTest(hooks);
+
+                test('it works', async function(assert) {
+                  // shadows keyword!
+                  const fn = () => {
+                    assert.step('shadowed:fn:invoke');
+                    return () => {};
+                  };
+
+                  class Demo extends Component {
+                    @tracked message = 'hello';
+                    setMessage = (msg) => this.message = msg;
+
+                    <template>
+                      <button {{on 'click' (fn this.setMessage 'goodbye')}}>{{this.message}}</button>
+                    </template>
+                  }
+
+                  await render(Demo);
+                  assert.verifySteps(['shadowed:fn:invoke']);
+
+                  assert.dom('button').hasText('hello');
+                  await click('button');
+                  assert.dom('button').hasText('hello', 'not changed because the shadowed fn returns a no-op');
+
+                  assert.verifySteps([]);
+                });
+              });
+            `,
+            'on-as-keyword-but-its-shadowed-test.gjs': `
+              import QUnit, { module, test } from 'qunit';
+              import { setupRenderingTest } from 'ember-qunit';
+              import { render, click } from '@ember/test-helpers';
+
+              import Component from '@glimmer/component';
+              import { tracked } from '@glimmer/tracking';
+              import { modifier as eModifier } from 'ember-modifier';
+
+              module('{{on}} as keyword (but it is shadowed)', function(hooks) {
+                setupRenderingTest(hooks);
+
+                test('it works', async function(assert) {
+                  // shadows keyword!
+                  const on = eModifier(() => {
+                    assert.step('shadowed:on:create');
+                  });
+
+                  class Demo extends Component {
+                    @tracked message = 'hello';
+                    louder = () => this.message = this.message + '!';
+
+                    <template>
+                      <button {{on 'click' this.louder}}>{{this.message}}</button>
+                    </template>
+                  }
+
+                  await render(Demo);
+                  assert.verifySteps(['shadowed:on:create']);
+
+                  assert.dom('button').hasText('hello');
+                  await click('button');
+                  assert.dom('button').hasText('hello', 'not changed because this on modifier does not add event listeners');
+
+                  assert.verifySteps([]);
+                });
+              });
+            `,
+            'hash-as-keyword-test.gjs': `
+              import { module, test } from 'qunit';
+              import { setupRenderingTest } from 'ember-qunit';
+              import { render, click } from '@ember/test-helpers';
+
+              import Component from '@glimmer/component';
+              import { tracked } from '@glimmer/tracking';
+
+              class Demo extends Component {
+                @tracked data = null;
+                setData = (d) => this.data = d;
+
+                <template>
+                  <button {{on 'click' (fn this.setData (hash greeting="hello" farewell="goodbye"))}}>
+                    {{#if this.data}}
+                      {{this.data.greeting}} {{this.data.farewell}}
+                    {{else}}
+                      click me
+                    {{/if}}
+                  </button>
+                </template>
+              }
+
+              module('{{hash}} as keyword', function(hooks) {
+                setupRenderingTest(hooks);
+
+                test('it works', async function(assert) {
+                  await render(Demo);
+                  assert.dom('button').hasText('click me');
+                  await click('button');
+                  assert.dom('button').hasText('hello goodbye');
+                });
+              });
+            `,
+            'hash-as-keyword-shadowed-test.gjs': `
+              import { module, test } from 'qunit';
+              import { setupRenderingTest } from 'ember-qunit';
+              import { render } from '@ember/test-helpers';
+
+              module('{{hash}} as keyword (shadowed)', function(hooks) {
+                setupRenderingTest(hooks);
+
+                test('it works', async function(assert) {
+                  const hash = (data) => data;
+                  await render(<template>{{hash "hello"}}</template>);
+                  assert.dom().hasText('hello');
+                });
+              });
+            `,
+            'array-as-keyword-test.gjs': `
+              import { module, test } from 'qunit';
+              import { setupRenderingTest } from 'ember-qunit';
+              import { render } from '@ember/test-helpers';
+
+              module('{{array}} as keyword', function(hooks) {
+                setupRenderingTest(hooks);
+
+                test('it works', async function(assert) {
+                  await render(
+                    <template>
+                      {{JSON.stringify (array "hello" "goodbye")}}
+                    </template>
+                  );
+                  assert.dom().hasText('["hello","goodbye"]');
+                });
+              });
+            `,
+            'array-as-keyword-shadowed-test.gjs': `
+              import { module, test } from 'qunit';
+              import { setupRenderingTest } from 'ember-qunit';
+              import { render } from '@ember/test-helpers';
+
+              module('{{array}} as keyword (shadowed)', function(hooks) {
+                setupRenderingTest(hooks);
+
+                test('it works', async function(assert) {
+                  const array = (data) => data;
+                  await render(<template>{{array "hello"}}</template>);
+                  assert.dom().hasText('hello');
                 });
               });
             `,

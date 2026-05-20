@@ -18,10 +18,12 @@ import type {
   SimpleText,
   TreeBuilder,
 } from '@glimmer/interfaces';
-import { expect, localAssert, setLocalDebugType } from '@glimmer/debug-util';
+import { expect } from '@glimmer/debug-util/lib/platform-utils';
+import assert from '@glimmer/debug-util/lib/assert';
+import { setLocalDebugType } from '@glimmer/debug-util/lib/debug-brand';
 import { destroy, registerDestructor } from '@glimmer/destroyable';
 import { LOCAL_DEBUG } from '@glimmer/local-debug-flags';
-import { Stack } from '@glimmer/util';
+import { StackImpl as Stack } from '@glimmer/util/lib/collections';
 
 import type { DynamicAttribute } from './attributes/dynamic';
 
@@ -254,7 +256,7 @@ export class NewTreeBuilder implements TreeBuilder {
 
   popRemoteElement(): RemoteBlock {
     const block = this.popBlock();
-    localAssert(block instanceof RemoteBlock, '[BUG] expecting a RemoteBlock');
+    assert(block instanceof RemoteBlock, '[BUG] expecting a RemoteBlock');
     this.popElement();
     return block;
   }
@@ -560,21 +562,21 @@ export class AppendingBlockList implements AppendingBlock {
   }
 
   openElement(_element: SimpleElement) {
-    localAssert(false, 'Cannot openElement directly inside a block list');
+    assert(false, 'Cannot openElement directly inside a block list');
   }
 
   closeElement() {
-    localAssert(false, 'Cannot closeElement directly inside a block list');
+    assert(false, 'Cannot closeElement directly inside a block list');
   }
 
   didAppendNode(_node: SimpleNode) {
-    localAssert(false, 'Cannot create a new node directly inside a block list');
+    assert(false, 'Cannot create a new node directly inside a block list');
   }
 
   didAppendBounds(_bounds: Bounds) {}
 
   finalize(_stack: TreeBuilder) {
-    localAssert(this.boundList.length > 0, 'boundsList cannot be empty');
+    assert(this.boundList.length > 0, 'boundsList cannot be empty');
   }
 }
 

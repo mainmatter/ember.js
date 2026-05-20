@@ -15,10 +15,10 @@ import type {
   WithCreateInstance,
   WithCustomDebugRenderTree,
 } from '@glimmer/interfaces';
-import { capabilityFlagsFrom } from '@glimmer/manager';
-import type { Reference } from '@glimmer/reference';
-import { UNDEFINED_REFERENCE, valueForRef } from '@glimmer/reference';
-import { EMPTY_ARGS } from '@glimmer/runtime';
+import { capabilityFlagsFrom } from '@glimmer/manager/lib/util/capabilities';
+import type { Reference } from '@glimmer/reference/lib/reference';
+import { UNDEFINED_REFERENCE, valueForRef } from '@glimmer/reference/lib/reference';
+import { EMPTY_ARGS } from '@glimmer/runtime/lib/vm/arguments';
 import { unwrapTemplate } from './unwrap-template';
 
 import type { DynamicScope } from '../renderer';
@@ -140,7 +140,6 @@ class OutletComponentManager
       name: 'main',
       args: EMPTY_ARGS,
       instance: undefined,
-      template: undefined,
     });
 
     if (state.engine) {
@@ -150,7 +149,6 @@ class OutletComponentManager
         name: state.engine.mountPoint,
         args: EMPTY_ARGS,
         instance: state.engine.instance,
-        template: undefined,
       });
     }
 

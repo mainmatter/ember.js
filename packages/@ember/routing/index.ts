@@ -1,4 +1,4 @@
-export { LinkTo } from '@ember/-internals/glimmer';
+export { default as LinkTo } from '@ember/-internals/glimmer/lib/components/link-to';
 export { setRouteManager } from '@ember/-internals/routing/route-managers/utils';
 export { ClassicRouteManager } from '@ember/-internals/routing/route-managers/classic-route-manager';
 export { routeCapabilities } from '@ember/-internals/routing/route-managers/route-manager';

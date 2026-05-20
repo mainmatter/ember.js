@@ -444,7 +444,7 @@
   @public
  */
 
-export { templateFactory as template, templateCacheCounters } from '@glimmer/opcode-compiler';
+export { default as template, templateCacheCounters } from '@glimmer/opcode-compiler/lib/template';
 
 export { default as RootTemplate } from './lib/templates/root';
 export { default as Input } from './lib/components/input';
@@ -497,5 +497,6 @@ export {
   setComponentManager,
 } from './lib/utils/managers';
 export { isSerializationFirstNode } from './lib/utils/serialization-first-node-helpers';
+export { default as element } from './lib/helpers/element';
 export { uniqueId } from './lib/helpers/unique-id';
 export { makeRouteTemplate } from './lib/component-managers/route-template';

@@ -1,9 +1,4 @@
-import {
-  ApplicationTestCase,
-  ModuleBasedTestResolver,
-  moduleFor,
-  strip,
-} from 'internal-test-helpers';
+import { ApplicationTestCase, ModuleBasedTestResolver, moduleFor } from 'internal-test-helpers';
 
 import { Component, setComponentManager } from '@ember/-internals/glimmer';
 import type { InternalOwner } from '@ember/-internals/owner';
@@ -17,8 +12,7 @@ import type { CapturedRenderNode } from '@glimmer/interfaces';
 import { componentCapabilities, setComponentTemplate } from '@glimmer/manager';
 import { templateOnlyComponent } from '@glimmer/runtime';
 import type { SimpleElement, SimpleNode } from '@simple-dom/interface';
-import type { EmberPrecompileOptions } from 'ember-template-compiler';
-import { compile } from 'ember-template-compiler';
+import { precompileTemplate } from '@ember/template-compilation';
 import { runTask } from 'internal-test-helpers/lib/run';
 import templateOnly from '@ember/component/template-only';
 
@@ -29,10 +23,6 @@ interface CapturedBounds {
 }
 
 function anyFunc() {}
-
-function compileTemplate(templateSource: string, options: Partial<EmberPrecompileOptions>) {
-  return compile(templateSource, options);
-}
 
 type Expected<T> = T | ((actual: T) => boolean);
 
@@ -45,7 +35,6 @@ interface ExpectedRenderNode {
   name: CapturedRenderNode['name'];
   args: Expected<CapturedRenderNode['args']>;
   instance: Expected<CapturedRenderNode['instance']>;
-  template: Expected<CapturedRenderNode['template']>;
   bounds: Expected<CapturedRenderNode['bounds']>;
   children: Expected<CapturedRenderNode['children']> | ExpectedRenderNode[];
 }
@@ -55,13 +44,34 @@ if (true === false) {
     'Application test: debug render tree',
     class extends ApplicationTestCase {
       async '@test routes'() {
-        this.addTemplate('index', 'Index');
-        this.addTemplate('foo', 'Foo {{outlet}}');
-        this.addTemplate('foo.index', 'index');
-        this.addTemplate('foo.inner', '{{@model}}');
-        this.addTemplate('bar', 'Bar {{outlet}}');
-        this.addTemplate('bar.index', 'index');
-        this.addTemplate('bar.inner', '{{@model}}');
+        this.add(
+          'template:index',
+          precompileTemplate('Index', { moduleName: 'my-app/templates/index.hbs' })
+        );
+        this.add(
+          'template:foo',
+          precompileTemplate('Foo {{outlet}}', { moduleName: 'my-app/templates/foo.hbs' })
+        );
+        this.add(
+          'template:foo.index',
+          precompileTemplate('index', { moduleName: 'my-app/templates/foo/index.hbs' })
+        );
+        this.add(
+          'template:foo.inner',
+          precompileTemplate('{{@model}}', { moduleName: 'my-app/templates/foo/inner.hbs' })
+        );
+        this.add(
+          'template:bar',
+          precompileTemplate('Bar {{outlet}}', { moduleName: 'my-app/templates/bar.hbs' })
+        );
+        this.add(
+          'template:bar.index',
+          precompileTemplate('index', { moduleName: 'my-app/templates/bar/index.hbs' })
+        );
+        this.add(
+          'template:bar.inner',
+          precompileTemplate('{{@model}}', { moduleName: 'my-app/templates/bar/inner.hbs' })
+        );
 
         this.router.map(function (this: any) {
           this.route('foo', function (this: any) {
@@ -92,7 +102,6 @@ if (true === false) {
               named: { controller: this.controllerFor('index'), model: undefined },
             },
             instance: this.controllerFor('index'),
-            template: 'my-app/templates/index.hbs',
             bounds: this.elementBounds(this.element!),
             children: [],
           }),
@@ -109,7 +118,6 @@ if (true === false) {
               named: { controller: this.controllerFor('foo'), model: undefined },
             },
             instance: this.controllerFor('foo'),
-            template: 'my-app/templates/foo.hbs',
             bounds: this.elementBounds(this.element!),
             children: [
               this.outlet({
@@ -120,7 +128,6 @@ if (true === false) {
                   named: { controller: this.controllerFor('foo.index'), model: undefined },
                 },
                 instance: this.controllerFor('foo.index'),
-                template: 'my-app/templates/foo/index.hbs',
                 bounds: this.nodeBounds(this.element!.lastChild),
                 children: [],
               }),
@@ -139,7 +146,6 @@ if (true === false) {
               named: { controller: this.controllerFor('foo'), model: undefined },
             },
             instance: this.controllerFor('foo'),
-            template: 'my-app/templates/foo.hbs',
             bounds: this.elementBounds(this.element!),
             children: [
               this.outlet({
@@ -150,7 +156,6 @@ if (true === false) {
                   named: { controller: this.controllerFor('foo.inner'), model: 'wow' },
                 },
                 instance: this.controllerFor('foo.inner'),
-                template: 'my-app/templates/foo/inner.hbs',
                 bounds: this.nodeBounds(this.element!.lastChild),
                 children: [],
               }),
@@ -169,7 +174,6 @@ if (true === false) {
               named: { controller: this.controllerFor('foo'), model: undefined },
             },
             instance: this.controllerFor('foo'),
-            template: 'my-app/templates/foo.hbs',
             bounds: this.elementBounds(this.element!),
             children: [
               this.outlet({
@@ -180,7 +184,6 @@ if (true === false) {
                   named: { controller: this.controllerFor('foo.inner'), model: 'zomg' },
                 },
                 instance: this.controllerFor('foo.inner'),
-                template: 'my-app/templates/foo/inner.hbs',
                 bounds: this.nodeBounds(this.element!.lastChild),
                 children: [],
               }),
@@ -190,16 +193,12 @@ if (true === false) {
       }
 
       async '@test {{mount}}'() {
-        this.addTemplate(
-          'application',
-          strip`
-            <div id="static">{{mount "foo"}}</div>
-            <div id="dynamic">{{mount this.engineName}}</div>
-            {{#if this.showMore}}
-              <div id="static-with-model">{{mount "foo" model=this.engineModel}}</div>
-              <div id="dynamic-with-model">{{mount this.engineName model=this.engineModel}}</div>
-            {{/if}}
-          `
+        this.add(
+          'template:application',
+          precompileTemplate(
+            '<div id="static">{{mount "foo"}}</div><div id="dynamic">{{mount this.engineName}}</div>{{#if this.showMore}}<div id="static-with-model">{{mount "foo" model=this.engineModel}}</div><div id="dynamic-with-model">{{mount this.engineName model=this.engineModel}}</div>{{/if}}',
+            { moduleName: 'my-app/templates/application.hbs' }
+          )
         );
 
         this.add(
@@ -212,21 +211,14 @@ if (true === false) {
               super.init(properties);
               this.register(
                 'template:application',
-                compileTemplate(
-                  strip`
-                    {{#if @model}}
-                      <InspectModel @model={{@model}} />
-                    {{/if}}
-                  `,
-                  {
-                    moduleName: 'foo/templates/application.hbs',
-                  }
-                )
+                precompileTemplate('{{#if @model}}<InspectModel @model={{@model}} />{{/if}}', {
+                  moduleName: 'foo/templates/application.hbs',
+                })
               );
               this.register(
                 'component:inspect-model',
                 setComponentTemplate(
-                  compileTemplate('{{@model}}', {
+                  precompileTemplate('{{@model}}', {
                     moduleName: 'foo/components/inspect-model.hbs',
                   }),
                   templateOnly()
@@ -253,21 +245,14 @@ if (true === false) {
               super.init(properties);
               this.register(
                 'template:application',
-                compileTemplate(
-                  strip`
-                    {{#if @model}}
-                      <InspectModel @model={{@model}} />
-                    {{/if}}
-                  `,
-                  {
-                    moduleName: 'bar/templates/application.hbs',
-                  }
-                )
+                precompileTemplate('{{#if @model}}<InspectModel @model={{@model}} />{{/if}}', {
+                  moduleName: 'bar/templates/application.hbs',
+                })
               );
               this.register(
                 'component:inspect-model',
                 setComponentTemplate(
-                  compileTemplate('{{@model}}', {
+                  precompileTemplate('{{@model}}', {
                     moduleName: 'bar/components/inspect-model.hbs',
                   }),
                   templateOnly()
@@ -294,7 +279,6 @@ if (true === false) {
             args: { positional: [], named: {} },
             instance: (instance: Record<string, boolean>) =>
               instance['isFooEngineInstance'] === true,
-            template: null,
             bounds: this.elementBounds(this.$('#static')[0]!),
             children: [
               {
@@ -303,7 +287,6 @@ if (true === false) {
                 args: { positional: [], named: {} },
                 instance: (instance: object) =>
                   instance.toString() === '(generated application controller)',
-                template: 'foo/templates/application.hbs',
                 bounds: this.elementBounds(this.$('#static')[0]!),
                 children: [],
               },
@@ -322,7 +305,6 @@ if (true === false) {
             args: { positional: [], named: {} },
             instance: (instance: Record<string, boolean>) =>
               instance['isFooEngineInstance'] === true,
-            template: null,
             bounds: this.elementBounds(this.$('#static')[0]!),
             children: [
               {
@@ -331,7 +313,6 @@ if (true === false) {
                 args: { positional: [], named: {} },
                 instance: (instance: object) =>
                   instance.toString() === '(generated application controller)',
-                template: 'foo/templates/application.hbs',
                 bounds: this.elementBounds(this.$('#static')[0]!),
                 children: [],
               },
@@ -343,7 +324,6 @@ if (true === false) {
             args: { positional: [], named: {} },
             instance: (instance: Record<string, boolean>) =>
               instance['isBarEngineInstance'] === true,
-            template: null,
             bounds: this.elementBounds(this.$('#dynamic')[0]!),
             children: [
               {
@@ -352,7 +332,6 @@ if (true === false) {
                 args: { positional: [], named: {} },
                 instance: (instance: object) =>
                   instance.toString() === '(generated application controller)',
-                template: 'bar/templates/application.hbs',
                 bounds: this.elementBounds(this.$('#dynamic')[0]!),
                 children: [],
               },
@@ -371,7 +350,6 @@ if (true === false) {
             args: { positional: [], named: {} },
             instance: (instance: Record<string, boolean>) =>
               instance['isFooEngineInstance'] === true,
-            template: null,
             bounds: this.elementBounds(this.$('#static')[0]!),
             children: [
               {
@@ -380,7 +358,6 @@ if (true === false) {
                 args: { positional: [], named: {} },
                 instance: (instance: object) =>
                   instance.toString() === '(generated application controller)',
-                template: 'foo/templates/application.hbs',
                 bounds: this.elementBounds(this.$('#static')[0]!),
                 children: [],
               },
@@ -408,7 +385,6 @@ if (true === false) {
             args: { positional: [], named: {} },
             instance: (instance: Record<string, boolean>) =>
               instance['isFooEngineInstance'] === true,
-            template: null,
             bounds: this.elementBounds(this.$('#static')[0]!),
             children: [
               {
@@ -417,7 +393,6 @@ if (true === false) {
                 args: { positional: [], named: {} },
                 instance: (instance: object) =>
                   instance.toString() === '(generated application controller)',
-                template: 'foo/templates/application.hbs',
                 bounds: this.elementBounds(this.$('#static')[0]!),
                 children: [],
               },
@@ -429,7 +404,6 @@ if (true === false) {
             args: { positional: [], named: { model } },
             instance: (instance: Record<string, boolean>) =>
               instance['isFooEngineInstance'] === true,
-            template: null,
             bounds: this.elementBounds(this.$('#static-with-model')[0]!),
             children: [
               {
@@ -438,7 +412,6 @@ if (true === false) {
                 args: { positional: [], named: { model } },
                 instance: (instance: object) =>
                   instance.toString() === '(generated application controller)',
-                template: 'foo/templates/application.hbs',
                 bounds: this.elementBounds(this.$('#static-with-model')[0]!),
                 children: [
                   {
@@ -446,7 +419,6 @@ if (true === false) {
                     name: 'inspect-model',
                     args: { positional: [], named: { model } },
                     instance: null,
-                    template: 'foo/components/inspect-model.hbs',
                     bounds: this.nodeBounds(this.$('#static-with-model')[0]!.lastChild),
                     children: [],
                   },
@@ -467,7 +439,6 @@ if (true === false) {
             args: { positional: [], named: {} },
             instance: (instance: Record<string, boolean>) =>
               instance['isFooEngineInstance'] === true,
-            template: null,
             bounds: this.elementBounds(this.$('#static')[0]!),
             children: [
               {
@@ -476,7 +447,6 @@ if (true === false) {
                 args: { positional: [], named: {} },
                 instance: (instance: object) =>
                   instance.toString() === '(generated application controller)',
-                template: 'foo/templates/application.hbs',
                 bounds: this.elementBounds(this.$('#static')[0]!),
                 children: [],
               },
@@ -488,7 +458,6 @@ if (true === false) {
             args: { positional: [], named: {} },
             instance: (instance: Record<string, boolean>) =>
               instance['isBarEngineInstance'] === true,
-            template: null,
             bounds: this.elementBounds(this.$('#dynamic')[0]!),
             children: [
               {
@@ -497,7 +466,6 @@ if (true === false) {
                 args: { positional: [], named: {} },
                 instance: (instance: object) =>
                   instance.toString() === '(generated application controller)',
-                template: 'bar/templates/application.hbs',
                 bounds: this.elementBounds(this.$('#dynamic')[0]!),
                 children: [],
               },
@@ -509,7 +477,6 @@ if (true === false) {
             args: { positional: [], named: { model } },
             instance: (instance: Record<string, boolean>) =>
               instance['isFooEngineInstance'] === true,
-            template: null,
             bounds: this.elementBounds(this.$('#static-with-model')[0]!),
             children: [
               {
@@ -519,14 +486,12 @@ if (true === false) {
                 instance: (instance: object) =>
                   instance.toString() === '(generated application controller)',
                 bounds: this.elementBounds(this.$('#static-with-model')[0]!),
-                template: 'foo/templates/application.hbs',
                 children: [
                   {
                     type: 'component',
                     name: 'inspect-model',
                     args: { positional: [], named: { model } },
                     instance: null,
-                    template: 'foo/components/inspect-model.hbs',
                     bounds: this.nodeBounds(this.$('#static-with-model')[0]!.lastChild),
                     children: [],
                   },
@@ -540,7 +505,6 @@ if (true === false) {
             args: { positional: [], named: { model } },
             instance: (instance: Record<string, boolean>) =>
               instance['isBarEngineInstance'] === true,
-            template: null,
             bounds: this.elementBounds(this.$('#dynamic-with-model')[0]!),
             children: [
               {
@@ -549,7 +513,6 @@ if (true === false) {
                 args: { positional: [], named: { model } },
                 instance: (instance: object) =>
                   instance.toString() === '(generated application controller)',
-                template: 'bar/templates/application.hbs',
                 bounds: this.elementBounds(this.$('#dynamic-with-model')[0]!),
                 children: [
                   {
@@ -557,7 +520,6 @@ if (true === false) {
                     name: 'inspect-model',
                     args: { positional: [], named: { model } },
                     instance: null,
-                    template: 'bar/components/inspect-model.hbs',
                     bounds: this.nodeBounds(this.$('#dynamic-with-model')[0]!.lastChild),
                     children: [],
                   },
@@ -581,7 +543,6 @@ if (true === false) {
             args: { positional: [], named: {} },
             instance: (instance: Record<string, boolean>) =>
               instance['isFooEngineInstance'] === true,
-            template: null,
             bounds: this.elementBounds(this.$('#static')[0]!),
             children: [
               {
@@ -590,7 +551,6 @@ if (true === false) {
                 args: { positional: [], named: {} },
                 instance: (instance: object) =>
                   instance.toString() === '(generated application controller)',
-                template: 'foo/templates/application.hbs',
                 bounds: this.elementBounds(this.$('#static')[0]!),
                 children: [],
               },
@@ -600,7 +560,10 @@ if (true === false) {
       }
 
       async '@test routable engine'() {
-        this.addTemplate('index', 'Index');
+        this.add(
+          'template:index',
+          precompileTemplate('Index', { moduleName: 'my-app/templates/index.hbs' })
+        );
 
         let instance: EngineInstance;
 
@@ -614,29 +577,19 @@ if (true === false) {
               super.init(properties);
               this.register(
                 'template:application',
-                compileTemplate(
-                  strip`
-                    {{outlet}}
-
-                    {{#if this.message}}
-                      <Hello @message={{this.message}} />
-                    {{/if}}
-                  `,
-                  {
-                    moduleName: 'foo/templates/application.hbs',
-                  }
+                precompileTemplate(
+                  '{{outlet}}{{#if this.message}}<Hello @message={{this.message}} />{{/if}}',
+                  { moduleName: 'foo/templates/application.hbs' }
                 )
               );
               this.register(
                 'template:index',
-                compileTemplate('Foo', {
-                  moduleName: 'foo/templates/index.hbs',
-                })
+                precompileTemplate('Foo', { moduleName: 'foo/templates/index.hbs' })
               );
               this.register(
                 'component:hello',
                 setComponentTemplate(
-                  compileTemplate('<span>Hello {{@message}}</span>', {
+                  precompileTemplate('<span>Hello {{@message}}</span>', {
                     moduleName: 'foo/components/hello.hbs',
                   }),
                   templateOnlyComponent()
@@ -667,7 +620,6 @@ if (true === false) {
               named: { controller: this.controllerFor('index'), model: undefined },
             },
             instance: this.controllerFor('index'),
-            template: 'my-app/templates/index.hbs',
             bounds: this.elementBounds(this.element!),
             children: [],
           }),
@@ -681,7 +633,6 @@ if (true === false) {
             name: 'foo',
             args: { positional: [], named: {} },
             instance: instance!,
-            template: null,
             bounds: this.elementBounds(this.element!),
             children: [
               {
@@ -695,7 +646,6 @@ if (true === false) {
                   },
                 },
                 instance: instance!.lookup('controller:application'),
-                template: 'foo/templates/application.hbs',
                 bounds: this.elementBounds(this.element!),
                 children: [
                   this.outlet({
@@ -706,7 +656,6 @@ if (true === false) {
                       named: { controller: instance!.lookup('controller:index'), model: undefined },
                     },
                     instance: instance!.lookup('controller:index'),
-                    template: 'foo/templates/index.hbs',
                     bounds: this.nodeBounds(this.element!.firstChild),
                     children: [],
                   }),
@@ -728,7 +677,6 @@ if (true === false) {
             name: 'foo',
             args: { positional: [], named: {} },
             instance: instance!,
-            template: null,
             bounds: this.elementBounds(this.element!),
             children: [
               {
@@ -742,7 +690,6 @@ if (true === false) {
                   },
                 },
                 instance: instance!.lookup('controller:application'),
-                template: 'foo/templates/application.hbs',
                 bounds: this.elementBounds(this.element!),
                 children: [
                   this.outlet({
@@ -753,7 +700,6 @@ if (true === false) {
                       named: { controller: instance!.lookup('controller:index'), model: undefined },
                     },
                     instance: instance!.lookup('controller:index'),
-                    template: 'foo/templates/index.hbs',
                     bounds: this.nodeBounds(this.element!.firstChild),
                     children: [],
                   }),
@@ -762,7 +708,6 @@ if (true === false) {
                     name: 'hello',
                     args: { positional: [], named: { message: 'World' } },
                     instance: null,
-                    template: 'foo/components/hello.hbs',
                     bounds: this.nodeBounds(this.element!.lastChild),
                     children: [],
                   },
@@ -784,7 +729,6 @@ if (true === false) {
             name: 'foo',
             args: { positional: [], named: {} },
             instance: instance!,
-            template: null,
             bounds: this.elementBounds(this.element!),
             children: [
               {
@@ -798,7 +742,6 @@ if (true === false) {
                   },
                 },
                 instance: instance!.lookup('controller:application'),
-                template: 'foo/templates/application.hbs',
                 bounds: this.elementBounds(this.element!),
                 children: [
                   this.outlet({
@@ -809,7 +752,6 @@ if (true === false) {
                       named: { controller: instance!.lookup('controller:index'), model: undefined },
                     },
                     instance: instance!.lookup('controller:index'),
-                    template: 'foo/templates/index.hbs',
                     bounds: this.nodeBounds(this.element!.firstChild),
                     children: [],
                   }),
@@ -830,7 +772,6 @@ if (true === false) {
               named: { controller: this.controllerFor('index'), model: undefined },
             },
             instance: this.controllerFor('index'),
-            template: 'my-app/templates/index.hbs',
             bounds: this.elementBounds(this.element!),
             children: [],
           }),
@@ -838,21 +779,18 @@ if (true === false) {
       }
 
       async [`@test template-only components`]() {
-        this.addTemplate(
-          'application',
-          strip`
-            <HelloWorld @name="first" />
-
-            {{#if this.showSecond}}
-              <HelloWorld @name="second" />
-            {{/if}}
-          `
+        this.add(
+          'template:application',
+          precompileTemplate(
+            '<HelloWorld @name="first" />{{#if this.showSecond}}<HelloWorld @name="second" />{{/if}}',
+            { moduleName: 'my-app/templates/application.hbs' }
+          )
         );
 
-        this.addComponent('hello-world', {
-          ComponentClass: null,
-          template: '{{@name}}',
-        });
+        this.add(
+          'component:hello-world',
+          setComponentTemplate(precompileTemplate('{{@name}}'), templateOnly())
+        );
 
         await this.visit('/');
 
@@ -862,7 +800,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'first' } },
             instance: null,
-            template: '(unknown template module)',
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
           },
@@ -878,7 +815,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'first' } },
             instance: null,
-            template: '(unknown template module)',
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
           },
@@ -887,7 +823,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'second' } },
             instance: null,
-            template: '(unknown template module)',
             bounds: this.nodeBounds(this.element!.lastChild),
             children: [],
           },
@@ -903,7 +838,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'first' } },
             instance: null,
-            template: '(unknown template module)',
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
           },
@@ -911,21 +845,18 @@ if (true === false) {
       }
 
       async '@feature(EMBER_GLIMMER_SET_COMPONENT_TEMPLATE) templateOnlyComponent()'() {
-        this.addTemplate(
-          'application',
-          strip`
-            <HelloWorld @name="first" />
-
-            {{#if this.showSecond}}
-              <HelloWorld @name="second" />
-            {{/if}}
-          `
+        this.add(
+          'template:application',
+          precompileTemplate(
+            '<HelloWorld @name="first" />{{#if this.showSecond}}<HelloWorld @name="second" />{{/if}}',
+            { moduleName: 'my-app/templates/application.hbs' }
+          )
         );
 
-        this.addComponent('hello-world', {
-          ComponentClass: templateOnlyComponent(),
-          template: '{{@name}}',
-        });
+        this.add(
+          'component:hello-world',
+          setComponentTemplate(precompileTemplate('{{@name}}'), templateOnlyComponent())
+        );
 
         await this.visit('/');
 
@@ -935,7 +866,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'first' } },
             instance: null,
-            template: '(unknown template module)',
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
           },
@@ -951,7 +881,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'first' } },
             instance: null,
-            template: '(unknown template module)',
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
           },
@@ -960,7 +889,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'second' } },
             instance: null,
-            template: '(unknown template module)',
             bounds: this.nodeBounds(this.element!.lastChild),
             children: [],
           },
@@ -976,7 +904,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'first' } },
             instance: null,
-            template: '(unknown template module)',
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
           },
@@ -984,23 +911,21 @@ if (true === false) {
       }
 
       async '@feature(EMBER_GLIMMER_SET_COMPONENT_TEMPLATE) templateOnlyComponent() + setComponentTemplate()'() {
-        this.addTemplate(
-          'application',
-          strip`
-            <HelloWorld @name="first" />
-
-            {{#if this.showSecond}}
-              <HelloWorld @name="second" />
-            {{/if}}
-          `
+        this.add(
+          'template:application',
+          precompileTemplate(
+            '<HelloWorld @name="first" />{{#if this.showSecond}}<HelloWorld @name="second" />{{/if}}',
+            { moduleName: 'my-app/templates/application.hbs' }
+          )
         );
 
-        this.addComponent('hello-world', {
-          ComponentClass: setComponentTemplate(
-            compileTemplate('{{@name}}', { moduleName: 'my-app/components/hello-world.hbs' }),
+        this.add(
+          'component:hello-world',
+          setComponentTemplate(
+            precompileTemplate('{{@name}}', { moduleName: 'my-app/components/hello-world.hbs' }),
             templateOnlyComponent('my-app/components/hello-world', 'HelloWorld')
-          ),
-        });
+          )
+        );
 
         await this.visit('/');
 
@@ -1010,7 +935,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'first' } },
             instance: null,
-            template: 'my-app/components/hello-world.hbs',
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
           },
@@ -1026,7 +950,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'first' } },
             instance: null,
-            template: 'my-app/components/hello-world.hbs',
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
           },
@@ -1035,7 +958,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'second' } },
             instance: null,
-            template: 'my-app/components/hello-world.hbs',
             bounds: this.nodeBounds(this.element!.lastChild),
             children: [],
           },
@@ -1051,7 +973,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'first' } },
             instance: null,
-            template: 'my-app/components/hello-world.hbs',
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
           },
@@ -1059,21 +980,18 @@ if (true === false) {
       }
 
       async '@test classic components'() {
-        this.addTemplate(
-          'application',
-          strip`
-            <HelloWorld @name="first" />
-
-            {{#if this.showSecond}}
-              <HelloWorld @name="second" />
-            {{/if}}
-          `
+        this.add(
+          'template:application',
+          precompileTemplate(
+            '<HelloWorld @name="first" />{{#if this.showSecond}}<HelloWorld @name="second" />{{/if}}',
+            { moduleName: 'my-app/templates/application.hbs' }
+          )
         );
 
-        this.addComponent('hello-world', {
-          ComponentClass: class extends Component {},
-          template: 'Hello World',
-        });
+        this.add(
+          'component:hello-world',
+          setComponentTemplate(precompileTemplate('Hello World'), class extends Component {})
+        );
 
         await this.visit('/');
 
@@ -1083,7 +1001,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'first' } },
             instance: (instance: Record<string, string>) => instance['name'] === 'first',
-            template: '(unknown template module)',
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
           },
@@ -1099,7 +1016,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'first' } },
             instance: (instance: Record<string, string>) => instance['name'] === 'first',
-            template: '(unknown template module)',
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
           },
@@ -1108,7 +1024,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'second' } },
             instance: (instance: Record<string, string>) => instance['name'] === 'second',
-            template: '(unknown template module)',
             bounds: this.nodeBounds(this.element!.lastChild),
             children: [],
           },
@@ -1124,7 +1039,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'first' } },
             instance: (instance: Record<string, string>) => instance['name'] === 'first',
-            template: '(unknown template module)',
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
           },
@@ -1132,33 +1046,33 @@ if (true === false) {
       }
 
       async '@test custom components'() {
-        this.addTemplate(
-          'application',
-          strip`
-            <HelloWorld @name="first" />
-
-            {{#if this.showSecond}}
-              <HelloWorld @name="second" />
-            {{/if}}
-          `
+        this.add(
+          'template:application',
+          precompileTemplate(
+            '<HelloWorld @name="first" />{{#if this.showSecond}}<HelloWorld @name="second" />{{/if}}',
+            { moduleName: 'my-app/templates/application.hbs' }
+          )
         );
 
-        this.addComponent('hello-world', {
-          ComponentClass: setComponentManager((_owner) => {
-            return {
-              capabilities: componentCapabilities('3.13', {}),
+        this.add(
+          'component:hello-world',
+          setComponentTemplate(
+            precompileTemplate('Hello World'),
+            setComponentManager((_owner) => {
+              return {
+                capabilities: componentCapabilities('3.13', {}),
 
-              createComponent(_, { named: { name } }) {
-                return { name };
-              },
+                createComponent(_, { named: { name } }) {
+                  return { name };
+                },
 
-              getContext(instances) {
-                return instances;
-              },
-            };
-          }, {}),
-          template: 'Hello World',
-        });
+                getContext(instances) {
+                  return instances;
+                },
+              };
+            }, {})
+          )
+        );
 
         await this.visit('/');
 
@@ -1168,7 +1082,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'first' } },
             instance: (instance: Record<string, string>) => instance['name'] === 'first',
-            template: '(unknown template module)',
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
           },
@@ -1184,7 +1097,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'first' } },
             instance: (instance: Record<string, string>) => instance['name'] === 'first',
-            template: '(unknown template module)',
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
           },
@@ -1193,7 +1105,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'second' } },
             instance: (instance: Record<string, string>) => instance['name'] === 'second',
-            template: '(unknown template module)',
             bounds: this.nodeBounds(this.element!.lastChild),
             children: [],
           },
@@ -1209,7 +1120,6 @@ if (true === false) {
             name: 'hello-world',
             args: { positional: [], named: { name: 'first' } },
             instance: (instance: Record<string, string>) => instance['name'] === 'first',
-            template: '(unknown template module)',
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
           },
@@ -1217,15 +1127,12 @@ if (true === false) {
       }
 
       async '@test <Input> components'() {
-        this.addTemplate(
-          'application',
-          strip`
-            <Input @type="text" @value="first" />
-
-            {{#if this.showSecond}}
-              <Input @type="checkbox" @checked={{false}} />
-            {{/if}}
-          `
+        this.add(
+          'template:application',
+          precompileTemplate(
+            '<Input @type="text" @value="first" />{{#if this.showSecond}}<Input @type="checkbox" @checked={{false}} />{{/if}}',
+            { moduleName: 'my-app/templates/application.hbs' }
+          )
         );
 
         await this.visit('/');
@@ -1240,7 +1147,6 @@ if (true === false) {
             name: 'on',
             instance: null,
             args: { named: {}, positional: ['change', anyFunc] },
-            template: null,
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
           },
@@ -1248,7 +1154,6 @@ if (true === false) {
             type: 'modifier',
             name: 'on',
             instance: null,
-            template: null,
             args: { named: {}, positional: ['input', anyFunc] },
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
@@ -1257,7 +1162,6 @@ if (true === false) {
             type: 'modifier',
             name: 'on',
             instance: null,
-            template: null,
             args: { named: {}, positional: ['keyup', anyFunc] },
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
@@ -1266,7 +1170,6 @@ if (true === false) {
             type: 'modifier',
             name: 'on',
             instance: null,
-            template: null,
             args: { named: {}, positional: ['paste', anyFunc] },
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
@@ -1275,7 +1178,6 @@ if (true === false) {
             type: 'modifier',
             name: 'on',
             instance: null,
-            template: null,
             args: { named: {}, positional: ['cut', anyFunc] },
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
@@ -1288,7 +1190,6 @@ if (true === false) {
             name: 'input',
             args: { positional: [], named: { type: 'text', value: 'first' } },
             instance: (instance: object) => inputToString.test(instance.toString()),
-            template: 'packages/@ember/-internals/glimmer/lib/templates/input.hbs',
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [...firstModifiers],
           },
@@ -1302,7 +1203,6 @@ if (true === false) {
             name: 'on',
             instance: null,
             args: { named: {}, positional: ['change', anyFunc] },
-            template: null,
             bounds: this.nodeBounds(this.element!.lastChild),
             children: [],
           },
@@ -1310,7 +1210,6 @@ if (true === false) {
             type: 'modifier',
             name: 'on',
             instance: null,
-            template: null,
             args: { named: {}, positional: ['input', anyFunc] },
             bounds: this.nodeBounds(this.element!.lastChild),
             children: [],
@@ -1319,7 +1218,6 @@ if (true === false) {
             type: 'modifier',
             name: 'on',
             instance: null,
-            template: null,
             args: { named: {}, positional: ['keyup', anyFunc] },
             bounds: this.nodeBounds(this.element!.lastChild),
             children: [],
@@ -1328,7 +1226,6 @@ if (true === false) {
             type: 'modifier',
             name: 'on',
             instance: null,
-            template: null,
             args: { named: {}, positional: ['paste', anyFunc] },
             bounds: this.nodeBounds(this.element!.lastChild),
             children: [],
@@ -1337,7 +1234,6 @@ if (true === false) {
             type: 'modifier',
             name: 'on',
             instance: null,
-            template: null,
             args: { named: {}, positional: ['cut', anyFunc] },
             bounds: this.nodeBounds(this.element!.lastChild),
             children: [],
@@ -1350,7 +1246,6 @@ if (true === false) {
             name: 'input',
             args: { positional: [], named: { type: 'text', value: 'first' } },
             instance: (instance: object) => inputToString.test(instance.toString()),
-            template: 'packages/@ember/-internals/glimmer/lib/templates/input.hbs',
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [...firstModifiers],
           },
@@ -1359,7 +1254,6 @@ if (true === false) {
             name: 'input',
             args: { positional: [], named: { type: 'checkbox', checked: false } },
             instance: (instance: object) => inputToString.test(instance.toString()),
-            template: 'packages/@ember/-internals/glimmer/lib/templates/input.hbs',
             bounds: this.nodeBounds(this.element!.lastChild),
             children: [...secondModifiers],
           },
@@ -1373,7 +1267,6 @@ if (true === false) {
             name: 'input',
             args: { positional: [], named: { type: 'text', value: 'first' } },
             instance: (instance: object) => inputToString.test(instance.toString()),
-            template: 'packages/@ember/-internals/glimmer/lib/templates/input.hbs',
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [...firstModifiers],
           },
@@ -1381,15 +1274,12 @@ if (true === false) {
       }
 
       async '@test <Textarea> components'() {
-        this.addTemplate(
-          'application',
-          strip`
-            <Textarea @value="first" />
-
-            {{#if this.showSecond}}
-              <Textarea @value="second" />
-            {{/if}}
-          `
+        this.add(
+          'template:application',
+          precompileTemplate(
+            '<Textarea @value="first" />{{#if this.showSecond}}<Textarea @value="second" />{{/if}}',
+            { moduleName: 'my-app/templates/application.hbs' }
+          )
         );
 
         await this.visit('/');
@@ -1400,7 +1290,6 @@ if (true === false) {
             name: 'on',
             instance: null,
             args: { named: {}, positional: ['change', anyFunc] },
-            template: null,
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
           },
@@ -1408,7 +1297,6 @@ if (true === false) {
             type: 'modifier',
             name: 'on',
             instance: null,
-            template: null,
             args: { named: {}, positional: ['input', anyFunc] },
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
@@ -1417,7 +1305,6 @@ if (true === false) {
             type: 'modifier',
             name: 'on',
             instance: null,
-            template: null,
             args: { named: {}, positional: ['keyup', anyFunc] },
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
@@ -1426,7 +1313,6 @@ if (true === false) {
             type: 'modifier',
             name: 'on',
             instance: null,
-            template: null,
             args: { named: {}, positional: ['paste', anyFunc] },
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
@@ -1435,7 +1321,6 @@ if (true === false) {
             type: 'modifier',
             name: 'on',
             instance: null,
-            template: null,
             args: { named: {}, positional: ['cut', anyFunc] },
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
@@ -1453,7 +1338,6 @@ if (true === false) {
             args: { positional: [], named: { value } },
             instance: (instance: Record<string, string>) => instance['value'] === value,
             bounds: this.nodeBounds(node),
-            template: 'packages/@ember/-internals/glimmer/lib/templates/textarea.hbs',
             children,
           };
         };
@@ -1470,7 +1354,6 @@ if (true === false) {
             name: 'on',
             instance: null,
             args: { named: {}, positional: ['change', anyFunc] },
-            template: null,
             bounds: this.nodeBounds(this.element!.lastChild),
             children: [],
           },
@@ -1478,7 +1361,6 @@ if (true === false) {
             type: 'modifier',
             name: 'on',
             instance: null,
-            template: null,
             args: { named: {}, positional: ['input', anyFunc] },
             bounds: this.nodeBounds(this.element!.lastChild),
             children: [],
@@ -1487,7 +1369,6 @@ if (true === false) {
             type: 'modifier',
             name: 'on',
             instance: null,
-            template: null,
             args: { named: {}, positional: ['keyup', anyFunc] },
             bounds: this.nodeBounds(this.element!.lastChild),
             children: [],
@@ -1496,7 +1377,6 @@ if (true === false) {
             type: 'modifier',
             name: 'on',
             instance: null,
-            template: null,
             args: { named: {}, positional: ['paste', anyFunc] },
             bounds: this.nodeBounds(this.element!.lastChild),
             children: [],
@@ -1505,7 +1385,6 @@ if (true === false) {
             type: 'modifier',
             name: 'on',
             instance: null,
-            template: null,
             args: { named: {}, positional: ['cut', anyFunc] },
             bounds: this.nodeBounds(this.element!.lastChild),
             children: [],
@@ -1530,20 +1409,15 @@ if (true === false) {
           this.route('bar');
         });
 
-        this.addTemplate(
-          'application',
-          strip`
-            <LinkTo @route="foo">Foo</LinkTo>
-
-            {{#if this.showSecond}}
-              <LinkTo @route="bar">Bar</LinkTo>
-            {{/if}}
-          `
+        this.add(
+          'template:application',
+          precompileTemplate(
+            '<LinkTo @route="foo">Foo</LinkTo>{{#if this.showSecond}}<LinkTo @route="bar">Bar</LinkTo>{{/if}}',
+            { moduleName: 'my-app/templates/application.hbs' }
+          )
         );
 
         await this.visit('/');
-
-        let template = `packages/@ember/-internals/glimmer/lib/templates/link-to.hbs`;
 
         const firstModifiers: ExpectedRenderNode['children'] = [
           {
@@ -1551,7 +1425,6 @@ if (true === false) {
             name: 'on',
             instance: null,
             args: { named: {}, positional: ['click', anyFunc] },
-            template: null,
             bounds: this.nodeBounds(this.element!.firstChild),
             children: [],
           },
@@ -1563,7 +1436,7 @@ if (true === false) {
             name: 'link-to',
             args: { positional: [], named: { route: 'foo' } },
             instance: (instance: Record<string, string>) => instance['route'] === 'foo',
-            template,
+
             bounds: this.nodeBounds(this.element!.firstChild),
             children: firstModifiers,
           },
@@ -1579,7 +1452,6 @@ if (true === false) {
             name: 'on',
             instance: null,
             args: { named: {}, positional: ['click', anyFunc] },
-            template: null,
             bounds: this.nodeBounds(this.element!.lastChild),
             children: [],
           },
@@ -1591,7 +1463,7 @@ if (true === false) {
             name: 'link-to',
             args: { positional: [], named: { route: 'foo' } },
             instance: (instance: Record<string, string>) => instance['route'] === 'foo',
-            template,
+
             bounds: this.nodeBounds(this.element!.firstChild),
             children: firstModifiers,
           },
@@ -1600,7 +1472,7 @@ if (true === false) {
             name: 'link-to',
             args: { positional: [], named: { route: 'bar' } },
             instance: (instance: Record<string, string>) => instance['route'] === 'bar',
-            template,
+
             bounds: this.nodeBounds(this.element!.lastChild),
             children: secondModifiers,
           },
@@ -1616,7 +1488,7 @@ if (true === false) {
             name: 'link-to',
             args: { positional: [], named: { route: 'foo' } },
             instance: (instance: Record<string, string>) => instance['route'] === 'foo',
-            template,
+
             bounds: this.nodeBounds(this.element!.firstChild),
             children: firstModifiers,
           },
@@ -1651,7 +1523,6 @@ if (true === false) {
           name,
           instance: undefined,
           args: { positional: [], named: {} },
-          template: null,
           bounds: node.bounds,
           children: [node],
         };
@@ -1678,7 +1549,6 @@ if (true === false) {
       }
 
       assertRenderTree(expected: ExpectedRenderNode[]): void {
-        let outlet = 'packages/@ember/-internals/glimmer/lib/templates/outlet.hbs';
         let actual = captureRenderTree(this.owner);
         let controller = this.controllerFor('application');
         let wrapped: ExpectedRenderNode[] = [
@@ -1687,7 +1557,6 @@ if (true === false) {
             name: '-top-level',
             args: { positional: [], named: {} },
             instance: undefined,
-            template: outlet,
             bounds: this.elementBounds(this.element!),
             children: [
               this.outlet({
@@ -1695,9 +1564,6 @@ if (true === false) {
                 name: 'application',
                 args: { positional: [], named: { controller, model: undefined } },
                 instance: controller,
-                template: this.owner.hasRegistration('template:application')
-                  ? 'my-app/templates/application.hbs'
-                  : outlet,
                 bounds: this.elementBounds(this.element!),
                 children: expected,
               }),
@@ -1757,7 +1623,6 @@ if (true === false) {
         this.assertProperty(actual.name, expected.name, false, `${path} (name)`);
         this.assertProperty(actual.args, expected.args, true, `${path} (args)`);
         this.assertProperty(actual.instance, expected.instance, false, `${path} (instance)`);
-        this.assertProperty(actual.template, expected.template, false, `${path} (template)`);
         this.assertProperty(actual.bounds, expected.bounds, true, `${path} (bounds)`);
 
         if (Array.isArray(expected.children)) {
@@ -1832,22 +1697,25 @@ if (true === false) {
       }
 
       async '@test cleans up correctly after errors'(assert: Assert) {
-        this.addTemplate(
-          'application',
-          strip`
-            <HelloWorld @name="first" />
-          `
+        this.add(
+          'template:application',
+          precompileTemplate('<HelloWorld @name="first" />', {
+            moduleName: 'my-app/templates/application.hbs',
+          })
         );
 
-        this.addComponent('hello-world', {
-          ComponentClass: class extends Component {
-            constructor(owner: InternalOwner) {
-              super(owner);
-              throw new Error('oops!');
+        this.add(
+          'component:hello-world',
+          setComponentTemplate(
+            precompileTemplate('{{@name}}'),
+            class extends Component {
+              constructor(owner: InternalOwner) {
+                super(owner);
+                throw new Error('oops!');
+              }
             }
-          },
-          template: '{{@name}}',
-        });
+          )
+        );
 
         await assert.rejects(this.visit('/'), /oops!/);
 

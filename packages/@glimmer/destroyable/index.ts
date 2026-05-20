@@ -1,6 +1,6 @@
 import { DEBUG } from '@glimmer/env';
 import type { Destroyable, Destructor } from '@glimmer/interfaces';
-import { debugToString } from '@glimmer/debug-util';
+import debugToString from '@glimmer/debug-util/lib/debug-to-string';
 import { scheduleDestroy, scheduleDestroyed } from '@glimmer/global-context';
 
 const LIVE_STATE = 0;
@@ -67,7 +67,11 @@ function remove<T extends object>(collection: OneOrMany<T>, item: T, message: st
 
   if (isBrandedArray(collection) && collection.length > 1) {
     let index = collection.indexOf(item);
-    collection.splice(index, 1);
+    let lastIndex = collection.length - 1;
+    if (index !== lastIndex) {
+      collection[index] = collection[lastIndex] as T;
+    }
+    collection.length = lastIndex;
     return collection;
   } else {
     return null;
@@ -87,7 +91,7 @@ function getDestroyableMeta<T extends Destroyable>(destroyable: T): DestroyableM
     };
 
     if (DEBUG) {
-      meta.source = destroyable as object;
+      meta.source = destroyable;
     }
 
     DESTROYABLE_META.set(destroyable, meta);

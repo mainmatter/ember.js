@@ -37,6 +37,7 @@ import { cancel, scheduleOnce } from '@ember/runloop';
 import { Promise } from 'rsvp';
 import type { InternalRouteInfo } from 'router_js';
 import { STATE_SYMBOL } from 'router_js';
+import type Controller from '@ember/controller';
 
 // --- Bucket ---
 
@@ -57,6 +58,8 @@ export class ClassicRouteBucket implements RouteStateBucket {
   // own timer and didEnter can cancel the right one without clobbering another
   // route's timer.
   loadingSubstateTimer: unknown = null;
+
+  controller: Controller | undefined = undefined;
 
   constructor(route: Route, args: CreateRouteArgs) {
     this.route = route;
@@ -252,6 +255,8 @@ export class ClassicRouteManager implements RouteManager<ClassicRouteBucket> {
     args: NavigationState & NavigationActions & NavigationStateWithTransition
   ): void {
     const transition = args.transition;
+
+    bucket.controller = bucket.route._initController();
 
     if (!transition.isActive) {
       return;

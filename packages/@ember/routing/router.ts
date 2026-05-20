@@ -980,7 +980,9 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
         name: route.routeName,
         wrapper,
         invokable,
-        routeInfo: routeInfo as unknown as object,
+        context: routeInfo.context,
+        // context: routeInfo.enterPromise,
+        bucket,
       };
 
       let state: OutletState = {

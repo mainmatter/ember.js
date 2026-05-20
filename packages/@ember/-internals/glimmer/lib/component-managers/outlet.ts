@@ -24,7 +24,7 @@ import { unwrapTemplate } from './unwrap-template';
 import type { DynamicScope } from '../renderer';
 import type { OutletState } from '../utils/outlet';
 import type OutletView from '../views/outlet';
-import { RouteInfo } from 'router_js';
+import type { RouteStateBucket } from '../../../routing';
 
 function instrumentationPayload(def: OutletDefinitionState) {
   // "main" used to be the outlet name, keeping it around for compatibility
@@ -51,7 +51,7 @@ export interface OutletDefinitionState {
   // (the invokable) and `@routeInfo` onto `wrapper` at render time.
   wrapper?: object;
   invokable?: object;
-  routeInfo?: RouteInfo;
+  bucket?: RouteStateBucket;
 }
 
 const CAPABILITIES: InternalComponentCapabilities = {

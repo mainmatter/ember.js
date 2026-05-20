@@ -96,7 +96,6 @@ export const outletHelper = internalHelper(
           if (state.wrapper !== undefined && state.invokable !== undefined) {
             let wrapperArgs = dict<Reference>();
             wrapperArgs['Component'] = createConstRef(state.invokable, '@Component');
-            wrapperArgs['routeInfo'] = createConstRef(state.routeInfo as object, '@routeInfo');
 
             // @controller must be a const ref because RouteTemplateManager
             // uses it as the route template's `self`, which is then passed
@@ -105,17 +104,15 @@ export const outletHelper = internalHelper(
             // eagerly here from the route on the routeInfo. The route has an
             // idempotent _initController that creates or returns the cached
             // controller instance.
-            let routeForController = (state.routeInfo as { route?: any } | undefined)?.route;
-            let controller = routeForController?._initController?.();
-            wrapperArgs['controller'] = createConstRef(controller, '@controller');
+            if (state.bucket?.controller !== undefined) {
+              wrapperArgs['controller'] = createConstRef(state.bucket.controller, '@controller');
+            }
 
-            // @model is a compute ref over outletRef.render.routeInfo.context.
+            // @model is a compute ref over outletRef.render.context.
             // The path-based ref consumes outletStateTag; when setOutletState
             // dirties the tag (each transition / model update), the ref
-            // invalidates and re-reads the new context. Mirrors main's
-            // childRefFromParts(outletRef, ['render', 'model']) pattern with
-            // an extra hop for routeInfo.
-            let modelRef = childRefFromParts(outletRef, ['render', 'routeInfo', 'context']);
+            // invalidates and re-reads the new context.
+            let modelRef = childRefFromParts(outletRef, ['render', 'context']);
             let model = valueForRef(modelRef);
             let frozenState = state;
             wrapperArgs['model'] = createComputeRef(() => {
@@ -209,9 +206,9 @@ function stateFor(
       ref,
       name: render.name,
       template: render.invokable,
-      wrapper: render.wrapper,
       invokable: render.invokable,
-      routeInfo: render.routeInfo,
+      wrapper: render.wrapper,
+      bucket: render.bucket,
     };
   }
 

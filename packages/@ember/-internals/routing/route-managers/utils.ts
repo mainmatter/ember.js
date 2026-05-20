@@ -1,3 +1,4 @@
+import type Controller from '@ember/controller';
 import type { ManagerFactory, RouteManager } from './route-manager';
 import { DEBUG } from '@glimmer/env';
 import { debugAssert } from '@glimmer/global-context';
@@ -5,6 +6,7 @@ import { debugAssert } from '@glimmer/global-context';
 export interface RouteStateBucket {
   invokable?: object;
   instance?: unknown;
+  controller?: Controller;
   args: object;
 }
 

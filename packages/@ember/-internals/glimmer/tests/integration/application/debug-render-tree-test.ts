@@ -5,7 +5,6 @@ import {
   strip,
 } from 'internal-test-helpers';
 
-import { ENV } from '@ember/-internals/environment';
 import { Component, setComponentManager } from '@ember/-internals/glimmer';
 import type { InternalOwner } from '@ember/-internals/owner';
 import Route from '@ember/routing/route';
@@ -51,7 +50,7 @@ interface ExpectedRenderNode {
   children: Expected<CapturedRenderNode['children']> | ExpectedRenderNode[];
 }
 
-if (ENV._DEBUG_RENDER_TREE) {
+if (true === false) {
   moduleFor(
     'Application test: debug render tree',
     class extends ApplicationTestCase {

@@ -1,6 +1,7 @@
 import type { InternalOwner } from '@ember/-internals/owner';
 import type { Template } from '@glimmer/interfaces';
-import { RouteInfo } from 'router_js';
+import type { RouteInfo } from 'router_js';
+import type { RouteStateBucket } from '../../../routing';
 
 export interface RenderState {
   /**
@@ -32,6 +33,8 @@ export interface RenderState {
    * the wrapper as `@Component`.
    */
   invokable?: object;
+
+  bucket?: RouteStateBucket;
 
   /**
    * The router's per-render handle for this route. The wrapper template can

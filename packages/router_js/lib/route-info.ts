@@ -5,9 +5,11 @@ import type { SerializerFunc } from './router';
 import type Router from './router';
 import type { PublicTransition as Transition } from './transition';
 import type InternalTransition from './transition';
-import { isTransition, PARAMS_SYMBOL, prepareResult, QUERY_PARAMS_SYMBOL } from './transition';
+import { isTransition, PARAMS_SYMBOL, QUERY_PARAMS_SYMBOL, STATE_SYMBOL } from './transition';
 import { isParam, isPromise, merge } from './utils';
 import { throwIfAborted } from './transition-aborted-error';
+import type { RouteManager } from '@ember/-internals/routing/route-managers/route-manager';
+import type { RouteStateBucket } from '@ember/-internals/routing/route-managers/utils';
 
 export type IModel = {} & {
   id?: string | number;
@@ -16,6 +18,11 @@ export type IModel = {} & {
 export type ModelFor<T> = T extends Route<infer V> ? V : never;
 
 export interface Route<T = unknown> {
+  // --- Route Manager fields (optional during migration) ---
+  manager: RouteManager<RouteStateBucket>;
+  bucket: RouteStateBucket;
+
+  // --- Classic Route fields (removed once all call sites migrate) ---
   inaccessibleByURL?: boolean;
   routeName: string;
   _internalName: string;
@@ -224,6 +231,8 @@ export default class InternalRouteInfo<R extends Route> {
   declare queryParams?: Dict<unknown>;
   declare context?: ModelFor<R> | PromiseLike<ModelFor<R>> | undefined;
   isResolved = false;
+  invokable?: object = undefined;
+  enterPromise?: globalThis.Promise<unknown> = undefined;
 
   constructor(router: Router<R>, name: string, paramNames: string[], route?: R) {
     this.name = name;
@@ -242,21 +251,120 @@ export default class InternalRouteInfo<R extends Route> {
     return this.params || {};
   }
 
-  resolve(transition: InternalTransition<R>): Promise<ResolvedRouteInfo<R>> {
+  resolve(transition: InternalTransition<R>): Promise<this> {
+    if (this.isResolved) {
+      // Fast path for re-entered routes. When named-transition-intent reuses this
+      // routeInfo as oldHandlerInfo on a subsequent transition, we skip the full
+      // resolveViaManager pass (no willEnter, no enter()) and just stash the
+      // already-resolved context onto the new transition so downstream consumers
+      // (e.g. modelFor()) see it. Mirrors what ResolvedRouteInfo.resolve does on
+      // becomeResolved-produced instances, without needing to build one.
+      if (transition && transition.resolvedModels) {
+        transition.resolvedModels[this.name] = this.context as ModelFor<R> | undefined;
+      }
+      return Promise.resolve(this);
+    }
+
     return Promise.resolve(this.routePromise)
       .then((route: Route) => {
         throwIfAborted(transition);
         return route;
       })
-      .then(() => this.runBeforeModelHook(transition))
-      .then(() => throwIfAborted(transition))
-      .then(() => this.getModel(transition))
-      .then((resolvedModel) => {
-        throwIfAborted(transition);
-        return resolvedModel;
-      })
-      .then((resolvedModel) => this.runAfterModelHook(transition, resolvedModel))
-      .then((resolvedModel) => this.becomeResolved(transition, resolvedModel));
+      .then((route) => {
+        return this.resolveViaManager(route.manager, route.bucket, transition);
+      });
+  }
+
+  /**
+    Manager-driven resolve path. Calls willEnter and enter() first, then getInvokable()
+    independently. enter() is fired and its promise stored on the bucket immediately,
+    but we do not await it here. resolve() settles as soon as getInvokable() resolves,
+    which allows the router to update currentRouteInfos and trigger rendering before
+    the route's data loading has finished. The enter() promise is awaited later by
+    EmberRouter after all getInvokable() calls in the transition have resolved.
+  */
+  private resolveViaManager(
+    manager: RouteManager<RouteStateBucket>,
+    bucket: RouteStateBucket,
+    transition: InternalTransition<R>
+  ): Promise<this> {
+    // Build the navigation args object once and share it between willEnter and enter.
+    // getAncestorPromise looks up the matching routeInfo on the transition by name
+    // and resolves with that ancestor's context once its enterPromise has settled.
+    // Sequential resolution guarantees that any ancestor's enterPromise is already
+    // set by the time a descendant's enter() runs. When called without an argument,
+    // it defaults to the immediate parent of the route currently being resolved.
+    const navigationArgs = {
+      transition,
+      to: this as unknown as RouteInfo, // will need to rethink this
+      cancel() {
+        transition.abort();
+      },
+      signal: transition.isTransition ? transition.signal : undefined,
+      getAncestorPromise: (ancestorRouteInfo: RouteInfo) => {
+        const allRouteInfos = transition[STATE_SYMBOL]?.routeInfos ?? [];
+        let matched = allRouteInfos.find((ri) => ri?.name === ancestorRouteInfo.name);
+
+        if (!matched) return Promise.resolve(undefined);
+        const ancestorEnterPromise = matched.enterPromise ?? Promise.resolve(undefined);
+        return ancestorEnterPromise.then(() => matched!.context);
+      },
+    };
+
+    // willEnter fires synchronously. For the classic manager this is where loading
+    // substate detection happens, so it must run before getInvokable() is called
+    // and before any rendering occurs.
+    manager.willEnter(bucket, navigationArgs);
+
+    // Fire enter() and immediately store the returned promise on the routeInfo.
+    // We do not await it here. Storing it now, before getInvokable() runs, ensures
+    // that by the time a child route's enter() runs, this ancestor's enterPromise
+    // is already set and can be retrieved via getAncestorPromise.
+    const enterPromise = manager.enter(bucket, navigationArgs);
+    this.enterPromise = enterPromise;
+
+    // We pipe the resolved enter() value onto this routeInfo's context as soon
+    // as enter() resolves. Doing this on its own promise chain (rather than in
+    // getInvokable's .then) means the context is available for ancestor lookups
+    // even when the manager's getInvokable does not await enterPromise (e.g.
+    // pioneer-style render-immediately managers).
+    enterPromise.then(
+      (resolvedContext) => {
+        if (transition.isAborted) {
+          return;
+        }
+        this.context = resolvedContext as ModelFor<R> | undefined;
+        // Notify the router so it can re-render outlets that depend on this
+        // routeInfo.context. Required for managers whose getInvokable returns
+        // before enter() resolves (otherwise the @model arg wired through the
+        // outlet helper stays at its initial undefined value until the whole
+        // transition settles).
+        this.router.onRouteContextSettled?.(this as unknown as InternalRouteInfo<R>);
+      },
+      () => {
+        // Swallow rejections here; transition-level error handling reports them.
+      }
+    );
+
+    // getInvokable() resolves as soon as the component definition is available.
+    // The manager decides whether to await enterPromise internally. We pass it
+    // along so the manager has the option without us forcing the wait.
+    return manager.getInvokable(bucket, enterPromise).then((invokable) => {
+      throwIfAborted(transition);
+      this.invokable = invokable;
+      this.isResolved = true;
+
+      // Compute and stash params for URL generation. Mirrors becomeResolved.
+      // Without this, _updateURL fails for routes with dynamic segments because
+      // the recognizer cannot find the param values in routeInfo.params.
+      const resolvedContext = this.context as ModelFor<R> | undefined;
+      this.params = this.serialize(resolvedContext);
+      this.stashResolvedModel(transition, resolvedContext);
+      transition[PARAMS_SYMBOL] = transition[PARAMS_SYMBOL] || {};
+      transition[PARAMS_SYMBOL][this.name] = this.params;
+
+      return this;
+    }) as unknown as Promise<this>;
   }
 
   becomeResolved(
@@ -288,6 +396,9 @@ export default class InternalRouteInfo<R extends Route> {
       this.route!,
       context
     );
+
+    // Carry the invokable (from getInvokable() during resolve) to the resolved info
+    resolved.invokable = this.invokable;
 
     if (cached !== undefined) {
       // SAFETY: This is potentially a bit risker, but for what we're doing, it should be ok.
@@ -353,53 +464,6 @@ export default class InternalRouteInfo<R extends Route> {
   private updateRoute(route: R) {
     route._internalName = this.name;
     return (this.route = route);
-  }
-
-  private runBeforeModelHook(transition: InternalTransition<R>) {
-    if (transition.trigger) {
-      transition.trigger(true, 'willResolveModel', transition, this.route);
-    }
-
-    let result;
-    if (this.route) {
-      if (this.route.beforeModel !== undefined) {
-        result = this.route.beforeModel(transition);
-      }
-    }
-
-    if (isTransition(result)) {
-      result = null;
-    }
-
-    return Promise.resolve(result);
-  }
-
-  private runAfterModelHook(
-    transition: InternalTransition<R>,
-    resolvedModel?: ModelFor<R> | null
-  ): Promise<ModelFor<R>> {
-    // Stash the resolved model on the payload.
-    // This makes it possible for users to swap out
-    // the resolved model in afterModel.
-    let name = this.name;
-    this.stashResolvedModel(transition, resolvedModel!);
-
-    let result;
-    if (this.route !== undefined) {
-      if (this.route.afterModel !== undefined) {
-        result = this.route.afterModel(resolvedModel!, transition);
-      }
-    }
-
-    result = prepareResult(result);
-
-    return Promise.resolve(result).then(() => {
-      // Ignore the fulfilled value returned from afterModel.
-      // Return the value stashed in resolvedModels, which
-      // might have been swapped out in afterModel.
-      // SAFTEY: We expect this to be of type T, though typing it as such is challenging.
-      return transition.resolvedModels[name]! as unknown as ModelFor<R>;
-    });
   }
 
   private stashResolvedModel(

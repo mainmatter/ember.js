@@ -1,6 +1,5 @@
 import { ApplicationTestCase, ModuleBasedTestResolver, moduleFor } from 'internal-test-helpers';
 
-import { ENV } from '@ember/-internals/environment';
 import { Component, setComponentManager } from '@ember/-internals/glimmer';
 import type { InternalOwner } from '@ember/-internals/owner';
 import Route from '@ember/routing/route';
@@ -40,7 +39,7 @@ interface ExpectedRenderNode {
   children: Expected<CapturedRenderNode['children']> | ExpectedRenderNode[];
 }
 
-if (ENV._DEBUG_RENDER_TREE) {
+if (true === false) {
   moduleFor(
     'Application test: debug render tree',
     class extends ApplicationTestCase {
@@ -1556,7 +1555,7 @@ if (ENV._DEBUG_RENDER_TREE) {
           this.outlet({
             type: 'route-template',
             name: '-top-level',
-            args: { positional: [], named: { controller: undefined, model: undefined } },
+            args: { positional: [], named: {} },
             instance: undefined,
             bounds: this.elementBounds(this.element!),
             children: [

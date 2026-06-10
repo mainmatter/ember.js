@@ -71,6 +71,11 @@ export default class Transition<R extends Route> implements Partial<Promise<R>> 
   _visibleQueryParams: Dict<unknown> = {};
   isIntermediate = false;
   [REDIRECT_DESTINATION_SYMBOL]?: Transition<R>;
+  // AbortController for the navigation. Managers receive its signal via
+  // AsyncNavigationState and can pass it to fetch() etc. The signal is
+  // aborted when the transition is rolled back (cancel() or redirect()).
+  abortController = new AbortController();
+  signal: AbortSignal = this.abortController.signal;
 
   /**
     In non-production builds, this function will return the stack that this Transition was
@@ -305,6 +310,12 @@ export default class Transition<R extends Route> implements Partial<Promise<R>> 
 
       this.isAborted = true;
       this.isActive = false;
+      // Abort the signal so any in-flight fetch() or other AbortSignal
+      // consumers in the manager can short-circuit. The transition's
+      // routeInfo.context writes are also gated on isAborted, so an
+      // already-running enter() that does not check the signal still
+      // cannot stomp the active transition's render state.
+      this.abortController.abort();
       this.router.activeTransition = undefined;
     }
   }

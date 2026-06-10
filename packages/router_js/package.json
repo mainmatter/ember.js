@@ -8,8 +8,7 @@
   "exports": {
     ".": "./index.ts"
   },
-  "scripts": {
-  },
+  "scripts": {},
   "dependencies": {
     "@glimmer/env": "workspace:*"
   },
@@ -20,7 +19,8 @@
     "loader.js": "^4.7.0",
     "qunit": "^2.11.3",
     "route-recognizer": "^0.3.4",
-    "rsvp": "^4.8.5"
+    "rsvp": "^4.8.5",
+    "@ember/-internals": "workspace:*"
   },
   "peerDependencies": {
     "route-recognizer": "^0.3.4",

@@ -1,5 +1,7 @@
 import type { InternalOwner } from '@ember/-internals/owner';
 import type { Template } from '@glimmer/interfaces';
+import type { RouteInfo } from 'router_js';
+import type { RouteStateBucket } from '../../../routing';
 
 export interface RenderState {
   /**
@@ -15,20 +17,38 @@ export interface RenderState {
   name: string;
 
   /**
-   * The controller (the self of the outlet component)
+   * The wrapper component returned from `manager.getRouteWrapper`.
+   * The outlet curries `@Component` (the invokable below) and `@routeInfo`
+   * onto this wrapper at render time.
+   *
+   * Manager-driven routes set this. Code that builds OutletState manually
+   * (e.g. older versions of @ember/test-helpers, liquid-fire) leaves it
+   * undefined and relies on the `template` field below.
    */
-  controller: unknown;
+  wrapper?: object;
 
   /**
-   * The model (the resolved value of the model hook)
+   * The per-render invokable returned from `manager.getInvokable`. The user's
+   * actual route template/component (uncurried). The outlet curries this onto
+   * the wrapper as `@Component`.
    */
-  model: unknown;
+  invokable?: object;
+
+  bucket?: RouteStateBucket;
 
   /**
-   * The route's template – this is either a Template or a component, and it
-   * gets normalized during the render process.
+   * The router's per-render handle for this route. The wrapper template can
+   * read whatever it needs (model, route, etc.) from this.
    */
-  template: Template | object | undefined;
+  routeInfo?: RouteInfo;
+
+  /**
+   * Raw template or already-resolved component for the legacy OutletState path.
+   * Only used when `wrapper`/`invokable` are not set, i.e. when external code
+   * (older @ember/test-helpers, liquid-fire-style addons) constructs
+   * OutletState manually rather than going through a route manager.
+   */
+  template?: Template | object;
 }
 
 export interface OutletState {

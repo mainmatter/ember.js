@@ -194,9 +194,14 @@ moduleFor(
 
       let TestRoute = class extends Route {};
 
-      // A manager that opts out of the wrapper: the outlet then invokes the
-      // route's invokable directly, passing the live model as `@context`,
-      // and keys teardown on invokable identity.
+      // A manager that opts out of the wrapper. With no wrapper (the manager's
+      // outlet implementation) there is no frame to deliver framework args, so
+      // the `{{outlet}}` keyword invokes the route's invokable directly with no
+      // args — that is what keeps currying out of the outlet path. A
+      // wrapper-less manager therefore owns composition itself; the classic
+      // invokable renders with the route's controller as `self`, so its
+      // template reads `{{this.model}}` (the controller's model) rather than an
+      // `@context` arg. Teardown is still keyed on the per-route invokable.
       class WrapperlessRouteManager extends ClassicRouteManager {
         getRenderState(bucket) {
           return { ...super.getRenderState(bucket), wrapper: undefined };
@@ -223,9 +228,10 @@ moduleFor(
         }
       );
       this.add('template:application', precompileTemplate('app:{{outlet}}'));
-      // Wrapper-less invokables receive the live model as `@context`.
-      this.add('template:index', precompileTemplate('index:{{@context.msg}}'));
-      this.add('template:other', precompileTemplate('other:{{@context.msg}}'));
+      // Wrapper-less: no `@context` arg is delivered, so read the model off the
+      // controller `self` (`this.model`), which the classic invokable provides.
+      this.add('template:index', precompileTemplate('index:{{this.model.msg}}'));
+      this.add('template:other', precompileTemplate('other:{{this.model.msg}}'));
 
       this.router.map(function () {
         this.route('other');
@@ -237,7 +243,7 @@ moduleFor(
       assert.strictEqual(
         this.element.textContent,
         'app:index:INDEX-CTX',
-        'wrapper-less route rendered with @context'
+        'wrapper-less route rendered via the controller self'
       );
 
       await this.visit('/other');
@@ -253,6 +259,60 @@ moduleFor(
         'app:index:INDEX-CTX',
         'round-trip renders correctly'
       );
+    }
+  }
+);
+
+moduleFor(
+  'Route manager - the @outlet arg',
+  class extends ApplicationTestCase {
+    constructor() {
+      super(...arguments);
+
+      // Route templates receive the child outlet boundary as `@outlet` and
+      // can render it directly instead of using the `{{outlet}}` keyword.
+      // `@outlet` is `null` when there is no child route, so templates guard
+      // with `{{#if @outlet}}` (dynamic invocation of `null` is a DEBUG-time
+      // error).
+      this.add(
+        'template:application',
+        precompileTemplate('app:[{{#if @outlet}}<@outlet />{{else}}empty{{/if}}]')
+      );
+      // A leaf route: `@outlet` is null here, so the guard's else branch
+      // renders.
+      this.add(
+        'template:index',
+        precompileTemplate('index[{{#if @outlet}}<@outlet />{{else}}leaf{{/if}}]')
+      );
+      // Mixing is fine: a level rendered via `<@outlet />` can render its own
+      // child via the keyword — both resolve the same child boundary.
+      this.add('template:parent', precompileTemplate('parent:{{outlet}}'));
+      this.add('template:parent.child', precompileTemplate('child'));
+
+      this.router.map(function () {
+        this.route('parent', function () {
+          this.route('child');
+        });
+      });
+    }
+
+    async ['@test route templates can render their child route via the @outlet arg'](assert) {
+      await this.visit('/');
+      assert.strictEqual(
+        this.element.textContent,
+        'app:[index[leaf]]',
+        '`<@outlet />` renders the child route; a leaf route sees `@outlet` as null'
+      );
+
+      await this.visit('/parent/child');
+      assert.strictEqual(
+        this.element.textContent,
+        'app:[parent:child]',
+        'a route rendered via `<@outlet />` can render its own child via the `{{outlet}}` keyword'
+      );
+
+      await this.visit('/');
+      assert.strictEqual(this.element.textContent, 'app:[index[leaf]]', 'round-trip re-renders');
     }
   }
 );

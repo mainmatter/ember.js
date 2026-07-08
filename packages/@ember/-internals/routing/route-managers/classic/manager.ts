@@ -11,14 +11,7 @@ import { getOwner } from '@ember/-internals/owner';
 import type { default as Owner } from '@ember/-internals/owner';
 import { get } from '@ember/-internals/metal/lib/property_get';
 import { makeRouteTemplate } from '@ember/-internals/glimmer/lib/component-managers/route-template';
-import type { OutletDefinitionState } from '@ember/-internals/glimmer/lib/component-managers/outlet';
-import type { Reference } from '@glimmer/reference/lib/reference';
-import {
-  childRefFromParts,
-  createComputeRef,
-  createConstRef,
-  valueForRef,
-} from '@glimmer/reference/lib/reference';
+import { createConstRef } from '@glimmer/reference/lib/reference';
 import { Promise as RSVPPromise } from 'rsvp';
 import { cancel, scheduleOnce } from '@ember/runloop';
 import type { InternalRouteInfo, BaseRoute as IRoute, RouteInfo, Transition } from 'router_js';
@@ -48,7 +41,7 @@ import {
   enterLoadingSubstate as enterClassicLoadingSubstate,
   fireLoadingEvent,
 } from './substates';
-import { CLASSIC_ROUTE_WRAPPER } from './wrapper';
+import { makeClassicOutlet, type ClassicRouteOutlet } from './wrapper';
 
 type TransitionLike = Transition & {
   isAborted?: boolean;
@@ -101,18 +94,32 @@ export class ClassicRouteManager implements RouteManagerWithClassicInterop<Class
     return {
       owner,
       name: route.routeName,
-      controller: route.controller,
-      model: route.currentModel,
-      wrapper: this.getRouteWrapper(),
+      context: classicContextFor(route),
+      wrapper: this.#outletFrameFor(bucket),
       invokable: buildClassicInvokable(bucket),
-      bucket,
-      produceContext: classicProduceContext,
     };
   }
 
+  // The classic manager's outlet frame (its outlet implementation). One per
+  // bucket so the frame's identity is per-route: the `{{outlet}}` keyword
+  // returns this value and glimmer keys teardown on it, so each route's
+  // subtree gets its own retain lifetime (see `./wrapper`). Cached on the
+  // bucket so a stable route re-renders the same frame in place. `getRouteWrapper`
+  // mints the frame (kept no-arg for the RFC hook and manager subclasses); the
+  // route name for its debug/backtracking label is stamped here.
+  #outletFrameFor(bucket: ClassicRouteBucket): object {
+    let frame = bucket.outletFrame;
+    if (frame === undefined) {
+      frame = this.getRouteWrapper() as ClassicRouteOutlet;
+      frame.name = bucket.route.routeName;
+      bucket.outletFrame = frame;
+    }
+    return frame;
+  }
+
   willEnter(bucket: ClassicRouteBucket, state: ClassicWillEnterState): void {
-    // Ensure the controller exists (idempotent) so the outlet can curry
-    // @controller as soon as the route renders.
+    // Ensure the controller exists (idempotent) so the outlet frame can
+    // forward @controller as soon as the route renders.
     bucket.route._initController();
 
     const transition = state.transition as Transition & { isActive: boolean };
@@ -224,10 +231,10 @@ export class ClassicRouteManager implements RouteManagerWithClassicInterop<Class
   }
 
   getRouteWrapper(): object {
-    // Module-stable, per the RFC: the outlet supplies `@Component` (the
-    // invokable), `@context`, and `@bucket` at render time, and keys its
-    // stability check on the per-bucket invokable.
-    return CLASSIC_ROUTE_WRAPPER;
+    // Mints a fresh classic outlet frame; `#outletFrameFor` caches it per
+    // bucket and stamps the route name. Kept no-arg so the RFC hook and
+    // manager subclasses (which call `super.getRouteWrapper()`) stay simple.
+    return makeClassicOutlet();
   }
 
   getInvokable(
@@ -368,25 +375,21 @@ export class ClassicRouteManager implements RouteManagerWithClassicInterop<Class
   }
 }
 
-// Builds the classic `@context` reference for an outlet: the live model
-// The function is a bridge between glimmer-land {{outlet}} and manager.
-// The goal is to keep glimmer agnostic of route internals.
-function classicProduceContext(
-  outletRef: Reference,
-  lastState: OutletDefinitionState,
-  state: OutletDefinitionState
-): Reference {
-  let modelRef = childRefFromParts(outletRef, ['render', 'model']);
-  let controllerRef = childRefFromParts(outletRef, ['render', 'controller']);
-  let outletController = state.controller;
-  let model = valueForRef(modelRef);
-
-  return createComputeRef(() => {
-    if (lastState === state && valueForRef(controllerRef) === outletController) {
-      model = valueForRef(modelRef);
-    }
-    return model;
-  });
+// Builds the classic `@context`: a plain snapshot of the route's current model
+// and controller, captured by value. The shape (`{ model, controller }`) is
+// classic-internal — the framework and the outlet treat `@context` as opaque;
+// only the classic wrapper template reads `.model`/`.controller`.
+//
+// Sourced from `route.currentModel` / `route.controller` — the same sources
+// today's `RenderState.model`/`controller` used, so timing parity with the
+// previous behaviour is automatic. Rebuilt on every `getRenderState` call:
+// the router re-invokes that on every render pass while the route is active,
+// so active routes observe current values; an exited route stops being asked,
+// so its outlet subtree keeps reading the last snapshot. The values are
+// captured, never live refs into the singleton `route` state that the next
+// navigation mutates.
+function classicContextFor(route: Route): { model: unknown; controller: unknown } {
+  return { model: route.currentModel, controller: route.controller };
 }
 
 // Build or return cached invokable for a classic route: look up `template:<name>`,

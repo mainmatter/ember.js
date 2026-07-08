@@ -1,10 +1,16 @@
 import type Controller from '@ember/controller';
 import type Route from '@ember/routing/route';
 import type { scheduleOnce } from '@ember/runloop';
+import type { ClassicRouteOutlet } from './wrapper';
 
 export class ClassicRouteBucket {
   // Cached invokable, written by buildClassicInvokable on first build.
   invokable: object | undefined = undefined;
+
+  // Cached outlet frame (the classic manager's outlet implementation),
+  // written by `getRouteWrapper`/`#outletFrameFor` on first render. One per
+  // bucket so the frame's identity is per-route.
+  outletFrame: ClassicRouteOutlet | undefined = undefined;
 
   // The route's controller, read through as a getter so there is a single
   // source of truth. An eagerly-copied field would go stale for substate

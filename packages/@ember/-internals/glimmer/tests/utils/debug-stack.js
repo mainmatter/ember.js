@@ -1,9 +1,11 @@
 function debugStackMessage(message, renderTree, includeTopLevel) {
   let topLevel = '';
 
-  if (includeTopLevel === 'outlet') {
-    topLevel = '{{outlet}} for -top-level\n {4}-top-level\n {6}';
-  } else if (includeTopLevel) {
+  // The root `-top-level` template is its own outlet frame (rendered
+  // wrapper-less), so it no longer has a separate `{{outlet}} for -top-level`
+  // component frame above it — the outlet-routed root and the plain root now
+  // read the same in the tracking-transaction stack.
+  if (includeTopLevel) {
     topLevel = '-top-level\n {4}';
   }
 

@@ -1,8 +1,13 @@
 import type { InternalOwner } from '@ember/-internals/owner';
-import type { Reference } from '@glimmer/interfaces';
-import type { OutletDefinitionState } from '../component-managers/outlet';
+import type { Reference } from '@glimmer/reference/lib/reference';
 
 export interface RenderState {
+  // --- Router-driven fields ------------------------------------------------
+  // Every manager render (`RouteManager.getRenderState`) provides these; they
+  // are the only render state the framework outlet core reads. Notably there
+  // is no `model`/`controller` here: per-instance state is carried opaquely in
+  // `context`, so model and controller stay internal to the route manager.
+
   /**
    * This is usually inherited from the parent (all the way up to the app
    * instance). However, engines uses this to swap out the owner when crossing
@@ -16,47 +21,43 @@ export interface RenderState {
   name: string;
 
   /**
-   * The controller (the self of the outlet component)
+   * Opaque per-instance value supplied by the route manager via
+   * `getRenderState`. The outlet forwards it to the render target as
+   * `@context` without inspecting it — its shape is the manager's concern.
    */
-  controller: unknown;
+  context?: unknown;
 
   /**
-   * The model (the resolved value of the model hook)
-   */
-  model: unknown;
-
-  /**
-   * Supplied by the route manager via `getRenderState` to keep `outlet` agnostic
-   * Produces a stable context reference
-   *
-   * @TODO: alternatively put it on OutletState directly and pass through `_setOutlets`;
-   */
-  produceContext?(
-    outletRef: Reference,
-    lastState: OutletDefinitionState,
-    state: OutletDefinitionState
-  ): Reference;
-
-  /**
-   * The stable wrapper component returned by `RouteManager.getRouteWrapper`
+   * The manager's outlet frame for this route (its outlet implementation),
+   * from `RouteManager.getRouteWrapper`. The `{{outlet}}` keyword resolves to
+   * this value; it is what renders the route and composes its child outlet.
+   * `undefined` when the manager renders wrapper-less (the keyword then
+   * resolves the invokable directly).
    */
   wrapper: object | undefined;
 
   /**
-   * The per-render invokable returned by `RouteManager.getInvokable`
+   * The per-render invokable returned by `RouteManager.getInvokable` — the
+   * route's component. The outlet frame renders it as `<this.Component>`.
    */
   invokable: object | undefined;
 
-  /**
-   * The manager's bucket for the route; the outlet curries it onto the
-   * wrapper as `@bucket`.
-   */
-  bucket?: object;
+  // --- Legacy `setOutletState` inputs only ---------------------------------
+  // Populated solely by legacy callers (older test-helpers, liquid-fire-style
+  // addons) that hand `OutletView.setOutletState` a raw `{ name, template,
+  // controller }`. `upgradeLegacyOutletState` normalizes these into an
+  // `invokable` before the outlet core sees the render; the router-driven
+  // path never sets them.
 
   /**
-   * Legacy template used by `setOutletState` callers (older test-helpers,
-   * liquid-fire-style addons). Usually a `Template`, but a pre-built
-   * component definition is also accepted (see `OutletView`).
+   * The controller used as the `self` (`this`) of a route template built from
+   * a raw legacy `template`.
+   */
+  controller?: unknown;
+
+  /**
+   * Legacy template. Usually a `Template`, but a pre-built component
+   * definition is also accepted (see `legacy-outlet-state`).
    */
   template?: object;
 }
@@ -78,4 +79,17 @@ export interface OutletState {
   outlets: {
     main: OutletState | undefined;
   };
+}
+
+/**
+  The root outlet state owned by `OutletView`. The `ref` is the head of the
+  outlet-state ref chain the cursor walks (see the outlet primitive in
+  `../outlet.ts`); `invokable` is the upgraded root template (the `-outlet`
+  template whose whole body is the `{{outlet}}` keyword). It is the one render
+  whose frame the renderer seeds directly.
+ */
+export interface OutletDefinitionState {
+  ref: Reference<OutletState | undefined>;
+  name: string;
+  invokable?: object;
 }

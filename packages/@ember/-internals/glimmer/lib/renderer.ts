@@ -26,20 +26,16 @@ import type { Reference } from '@glimmer/reference/lib/reference';
 import { createConstRef, UNDEFINED_REFERENCE, valueForRef } from '@glimmer/reference/lib/reference';
 import type { CurriedValue } from '@glimmer/runtime/lib/curried-value';
 import { clientBuilder } from '@glimmer/runtime/lib/vm/element-builder';
-import { createCapturedArgs, EMPTY_POSITIONAL } from '@glimmer/runtime/lib/vm/arguments';
 import { curry } from '@glimmer/runtime/lib/curried-value';
 import { inTransaction } from '@glimmer/runtime/lib/environment';
 import { renderMain } from '@glimmer/runtime/lib/render';
-import { dict } from '@glimmer/util/lib/collections';
 import { unwrapTemplate } from './component-managers/unwrap-template';
 import type { SimpleDocument, SimpleElement, SimpleNode } from '@simple-dom/interface';
 import type Component from './component';
 import type ClassicComponent from './component';
 import { BOUNDS } from './component-managers/curly';
-import { createRootOutlet } from './component-managers/outlet';
 import { RootComponentDefinition } from './component-managers/root';
 import RouterResolver from './router-resolver';
-import type { OutletState } from './utils/outlet';
 import OutletView from './views/outlet';
 import type { IBuilder, RendererRoot } from './base-renderer';
 import { BaseRenderer, errorLoopTransaction } from './base-renderer';
@@ -67,16 +63,23 @@ export interface View {
 }
 
 export class DynamicScope implements GlimmerDynamicScope {
+  // The outlet cursor: a ref to the `OutletState` the next `{{outlet}}`
+  // renders. The renderer seeds it with the root state; each route frame
+  // advances it to its child (see the outlet plumbing in
+  // `outlet.ts`). The key name (`outletState`) is part of
+  // the `-get-dynamic-var` intimate API, so it keeps its historical name.
+  // Typed as `unknown` because `-with-dynamic-vars` can (and liquid-fire-style
+  // addons do) round-trip arbitrary refs through this entry.
   constructor(
     public view: View | null,
-    public outletState: Reference<OutletState | undefined>
+    public outletState: Reference<unknown>
   ) {}
 
   child() {
     return new DynamicScope(this.view, this.outletState);
   }
 
-  get(key: 'outletState'): Reference<OutletState | undefined> {
+  get(key: 'outletState'): Reference<unknown> {
     assert(
       `Using \`-get-dynamic-scope\` is only supported for \`outletState\` (you used \`${key}\`).`,
       key === 'outletState'
@@ -84,7 +87,7 @@ export class DynamicScope implements GlimmerDynamicScope {
     return this.outletState;
   }
 
-  set(key: 'outletState', value: Reference<OutletState | undefined>) {
+  set(key: 'outletState', value: Reference<unknown>) {
     assert(
       `Using \`-with-dynamic-scope\` is only supported for \`outletState\` (you used \`${key}\`).`,
       key === 'outletState'
@@ -226,24 +229,16 @@ export class Renderer extends BaseRenderer {
       return;
     }
 
-    // TODO: This bypasses the {{outlet}} syntax so logically duplicates
-    // some of the set up code. Since this is all internal (or is it?),
-    // we can refactor this to do something more direct/less convoluted
-    // and with less setup, but get it working first
-    let outlet = createRootOutlet(view);
-    let { invokable } = view.state;
+    // The root renders the root template invokable (the `-outlet` template,
+    // whose body is `{{outlet}}`) directly — no framework outlet component.
+    // It is already a curried route-template value; seed the outlet cursor
+    // with the root OutletState so its `{{outlet}}` resolves the application
+    // level. The root template renders wrapper-less, so it is its own level's
+    // outlet frame (see the route-template manager).
+    let { ref, invokable } = view.state;
     assert('[BUG] OutletView state is unexpectedly missing its root invokable', invokable);
 
-    let named = dict<Reference>();
-    named['Component'] = createConstRef(invokable, '@Component');
-
-    let args = createCapturedArgs(named, EMPTY_POSITIONAL);
-
-    this._appendDefinition(
-      view,
-      curry(0 as CurriedComponent, outlet, view.owner, args, true),
-      target
-    );
+    this._appendDefinition(view, invokable as CurriedValue, target, ref);
   }
 
   appendTo(view: ClassicComponent, target: SimpleElement): void {
@@ -258,10 +253,11 @@ export class Renderer extends BaseRenderer {
   _appendDefinition(
     root: OutletView | ClassicComponent,
     definition: CurriedValue,
-    target: SimpleElement
+    target: SimpleElement,
+    outletState: Reference = UNDEFINED_REFERENCE
   ): void {
     let self = createConstRef(definition, 'this');
-    let dynamicScope = new DynamicScope(null, UNDEFINED_REFERENCE);
+    let dynamicScope = new DynamicScope(null, outletState);
     let rootState = new ClassicRootState(
       root,
       this.state.context,

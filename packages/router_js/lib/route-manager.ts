@@ -328,18 +328,20 @@ export interface RouteManager<Bucket extends RouteStateBucket = RouteStateBucket
   didExit(bucket: Bucket, state: DidExitState): void;
 
   /**
-    Optional. Returns a module-stable wrapper component: the same value for
-    every call, across all buckets. The outlet invokes it with `@Component`
-    (the per-bucket invokable from the render state), `@context` (the live
-    model), and `@bucket`; route identity for the rendering layer's stability
-    check is carried by the invokable, so the wrapper itself carries no
-    per-route state.
+    Optional. Returns the manager's outlet frame — the manager's own
+    *implementation of the outlet*. The framework provides the outlet concept
+    (the `{{outlet}}` keyword, the outlet-state chain, the dynamic-scope
+    cursor) but not its meaning: the `{{outlet}}` keyword resolves to this
+    value, and this frame decides how the route's component, context, and
+    child outlet compose (typically a component whose layout renders the
+    route's invokable and forwards `@model`/`@controller`/`@outlet` onto it).
 
-    A wrapper is an argument-forwarding policy, and it costs one extra
-    component boundary per outlet level per transition (measured at roughly
-    8–10µs per level). Managers whose route components can consume `@context`
-    directly should omit it (and leave `wrapper` undefined in their render
-    state); the outlet then invokes the invokable directly.
+    The frame's identity is the rendering layer's teardown key, so a manager
+    that needs per-route teardown/state must return a per-route value (the
+    classic manager returns one frame per bucket). A manager may instead
+    render wrapper-less by leaving `wrapper` undefined in its render state; the
+    keyword then resolves the invokable directly, with no framework args
+    delivered (the manager owns composition itself).
    */
   getRouteWrapper?(): object;
 
@@ -353,20 +355,27 @@ export interface RouteManager<Bucket extends RouteStateBucket = RouteStateBucket
    */
   getInvokable(bucket: Bucket, enterPromise?: Promise<unknown>): Promise<object | undefined>;
 
+  /**
+    Returns the per-render state for the route. The router re-invokes this on
+    every render pass while the route is active, so managers may rebuild the
+    snapshot each call; an exited route simply stops being asked, so its outlet
+    subtree keeps the last snapshot it was given.
+   */
   getRenderState(bucket: Bucket): RenderStateLike;
 }
 
 type RenderStateLike = {
   owner: any;
   name: string;
-  controller: unknown;
-  model: unknown;
+  /**
+    Opaque per-instance value produced by the manager. The outlet forwards it
+    to the render target as `@context` without inspecting it; its shape is
+    entirely the manager's concern.
+   */
+  context?: unknown;
   invokable: object | undefined;
-  /** Optional argument-forwarding wrapper; see `getRouteWrapper`. */
+  /** Optional per-route outlet frame (the manager's outlet impl); see `getRouteWrapper`. */
   wrapper: object | undefined;
-  /** Curried onto the wrapper as `@bucket` by the outlet. */
-  bucket?: RouteStateBucket;
-  produceContext?: (outletRef: object, lastState: object, state: object) => object;
 };
 
 /**

@@ -13,8 +13,14 @@ import { join, once, run, schedule } from '@ember/runloop';
 import libraries from '@ember/-internals/metal/lib/libraries';
 import RSVP from '@ember/-internals/runtime/lib/ext/rsvp';
 import EventDispatcher from '@ember/-internals/views/lib/system/event_dispatcher';
-import Route from '@ember/routing/route';
 import Router from '@ember/routing/router';
+// Classic `Route` fills the default-route slot as an import-time side effect
+// (see `@ember/routing/lib/default-route`), which is what makes `route:basic`
+// available below. The import is deliberately for its side effect only: this
+// module reads the slot rather than the class, so that the day this import
+// becomes conditional, nothing else here has to change.
+import '@ember/routing/route';
+import { getDefaultRouteFactory } from '@ember/routing/lib/default-route';
 import HashLocation from '@ember/routing/hash-location';
 import HistoryLocation from '@ember/routing/history-location';
 import NoneLocation from '@ember/routing/none-location';
@@ -1117,7 +1123,16 @@ function commonSetupRegistry(registry: Registry) {
     },
   });
 
-  registry.register('route:basic', Route);
+  // `route:basic` is the base class every auto-generated route extends, and so
+  // the thing that decides which route manager an app's undefined routes get.
+  // It is read out of the slot rather than imported directly, so that an app
+  // which never loads classic routing simply has no default here — and can
+  // register its own `route:basic` instead.
+  let DefaultRoute = getDefaultRouteFactory();
+  if (DefaultRoute) {
+    registry.register('route:basic', DefaultRoute);
+  }
+
   registry.register('event_dispatcher:main', EventDispatcher);
 
   registry.register('location:hash', HashLocation);

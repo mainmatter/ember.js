@@ -232,13 +232,19 @@ class EngineInstance extends EmberObject.extend(RegistryProxyMixin, ContainerPro
 
     assert('expected parent', parent);
 
-    let registrations = ['route:basic', 'service:-routing'] as const;
+    let routingService = parent.resolveRegistration('service:-routing');
+    assert('expected registration to be a factory', isFactory(routingService));
+    this.register('service:-routing', routingService);
 
-    registrations.forEach((key) => {
-      let registration = parent.resolveRegistration(key);
-      assert('expected registration to be a factory', isFactory(registration));
-      this.register(key, registration);
-    });
+    // `route:basic` only exists if classic `@ember/routing/route` was imported;
+    // an app whose routes are all driven by their own route managers has no
+    // base route class to clone. If a route module is imported later, the
+    // router registers it on demand when it needs to auto-generate a route.
+    let basicRoute = parent.resolveRegistration('route:basic');
+    if (basicRoute !== undefined) {
+      assert('expected registration to be a factory', isFactory(basicRoute));
+      this.register('route:basic', basicRoute);
+    }
 
     let env = parent.lookup('-environment:main') as Record<string, unknown>;
     this.register('-environment:main', env, { instantiate: false });

@@ -18,9 +18,12 @@ import {
   calculateCacheKey,
   extractRouteArgs,
   getActiveTargetName,
+  getFullQueryParams,
   resemblesURL,
 } from './lib/utils';
 import type { RouteArgs, RouteOptions } from './lib/utils';
+import { defaultSerialize, overridesSerialize } from './lib/default-serialize';
+import { getDefaultRouteFactory } from './lib/default-route';
 import type {
   default as EmberLocation,
   Registry as LocationRegistry,
@@ -34,14 +37,7 @@ import { assert, info } from '@ember/debug';
 import { cancel, later, once, run } from '@ember/runloop';
 import { associateDestroyableChild } from '@glimmer/destroyable';
 import { DEBUG } from '@glimmer/env';
-import {
-  type default as Route,
-  type QueryParam,
-  type QueryParamMeta,
-  defaultSerialize,
-  getFullQueryParams,
-  hasDefaultSerialize,
-} from '@ember/routing/route';
+import type { default as Route, QueryParam, QueryParamMeta } from '@ember/routing/route';
 import type {
   BaseRoute,
   InternalRouteInfo,
@@ -366,8 +362,26 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
       let factoryManager = routeOwner.factoryFor(fullRouteName);
       if (!factoryManager) {
         // Auto-generate a default route if none is registered.
-        // SAFETY: configured in commonSetupRegistry in @ember/application/lib.
-        let DefaultRoute: any = routeOwner.factoryFor('route:basic')!.class;
+        let basicFactoryManager = routeOwner.factoryFor('route:basic');
+
+        if (!basicFactoryManager) {
+          // `route:basic` is registered during boot, but only if classic
+          // `@ember/routing/route` had been imported by then. A route module
+          // loaded later (a lazy engine, say) fills the slot after the fact,
+          // so consult it here too.
+          let SlotRoute = getDefaultRouteFactory();
+          assert(
+            `The route '${routeName}' has no definition, and Ember has no base route class to generate one from ` +
+              `because \`@ember/routing/route\` was never imported. Either define '${fullRouteName}' ` +
+              `(or a route manager for it), or import the classic \`Route\` from '@ember/routing/route'.`,
+            SlotRoute !== undefined
+          );
+          routeOwner.register('route:basic', SlotRoute);
+          basicFactoryManager = routeOwner.factoryFor('route:basic');
+          assert('BUG: Missing factory for route:basic', basicFactoryManager);
+        }
+
+        let DefaultRoute: any = basicFactoryManager.class;
         routeOwner.register(fullRouteName, class extends DefaultRoute {});
         factoryManager = routeOwner.factoryFor(fullRouteName);
 
@@ -381,7 +395,15 @@ class EmberRouter extends EmberObject.extend(Evented) implements Evented {
       assert('BUG: Missing factory for route', factoryManager);
       const RouteClass = factoryManager.class as object;
 
-      if (routeOwner !== mainOwner && !hasDefaultSerialize((RouteClass as any).prototype)) {
+      // An engine route may not serialize itself: the host app owns the URL,
+      // and `_engineInfoByRoute` carries the map's `serialize` for it. The
+      // question is whether the *author* supplied one, not whether the class
+      // descends from classic `Route` — a manager-driven route has no
+      // `serialize` at all and has therefore overridden nothing.
+      if (
+        routeOwner !== mainOwner &&
+        overridesSerialize((RouteClass as { prototype: { serialize?: unknown } }).prototype)
+      ) {
         throw new Error('Defining a custom serialize method on an Engine route is not supported.');
       }
 

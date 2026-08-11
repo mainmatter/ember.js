@@ -3,7 +3,7 @@ import { getOwner } from '@ember/-internals/owner';
 import type { ControllerQueryParam, ControllerQueryParamType } from '@ember/controller';
 import { assert } from '@ember/debug';
 import EngineInstance from '@ember/engine/instance';
-import type { BaseRoute, InternalRouteInfo } from 'router_js';
+import type { BaseRoute, InternalRouteInfo, TransitionState } from 'router_js';
 import type Router from 'router_js';
 import { STATE_SYMBOL } from 'router_js';
 import type { ExtendedInternalRouteInfo } from '@ember/routing/route';
@@ -65,6 +65,46 @@ export function extractRouteArgs(args: RouteArgs): ExtractedArgs {
   let models = args;
 
   return { routeName, models, queryParams };
+}
+
+/**
+  A `TransitionState` plus the query param caches the routing layer stashes on
+  it.
+*/
+export type RouteTransitionState = TransitionState<BaseRoute> & {
+  fullQueryParams?: Record<string, unknown>;
+  queryParamsFor?: Record<string, Record<string, unknown>>;
+};
+
+/**
+  The fully deserialized query params for a transition state, cached on the
+  state once every route info has resolved.
+
+  Lives here rather than in `@ember/routing/route` because it is shared by
+  `@ember/routing/router`, which must not import the classic route module.
+  It touches only the router and the transition state — never a `Route`.
+*/
+export function getFullQueryParams(router: EmberRouter, state: RouteTransitionState) {
+  if (state.fullQueryParams) {
+    return state.fullQueryParams;
+  }
+
+  let haveAllRouteInfosResolved = state.routeInfos.every((routeInfo) => routeInfo.route);
+
+  let fullQueryParamsState: Record<string, unknown> = {
+    ...state.queryParams,
+  };
+
+  router._deserializeQueryParams(state.routeInfos, fullQueryParamsState);
+
+  // only cache query params state if all routeinfos have resolved; it's possible
+  // for lazy routes to not have resolved when `getFullQueryParams` is called, so
+  // we wait until all routes have resolved prior to caching query params state
+  if (haveAllRouteInfosResolved) {
+    state.fullQueryParams = fullQueryParamsState;
+  }
+
+  return fullQueryParamsState;
 }
 
 export function getActiveTargetName(router: Router<BaseRoute>): string {

@@ -5,7 +5,8 @@
   "type": "module",
   "sideEffects": [
     "./dist/*/packages/ember-testing/index.js",
-    "./dist/*/packages/@ember/-internals/runtime/lib/ext/rsvp.js"
+    "./dist/*/packages/@ember/-internals/runtime/lib/ext/rsvp.js",
+    "./dist/*/packages/@ember/routing/route.js"
   ],
   "keywords": [
     "ember-addon"
@@ -282,6 +283,8 @@
       "@ember/routing/index.js": "ember-source/@ember/routing/index.js",
       "@ember/routing/lib/cache.js": "ember-source/@ember/routing/lib/cache.js",
       "@ember/routing/lib/controller_for.js": "ember-source/@ember/routing/lib/controller_for.js",
+      "@ember/routing/lib/default-route.js": "ember-source/@ember/routing/lib/default-route.js",
+      "@ember/routing/lib/default-serialize.js": "ember-source/@ember/routing/lib/default-serialize.js",
       "@ember/routing/lib/dsl.js": "ember-source/@ember/routing/lib/dsl.js",
       "@ember/routing/lib/generate_controller.js": "ember-source/@ember/routing/lib/generate_controller.js",
       "@ember/routing/lib/location-utils.js": "ember-source/@ember/routing/lib/location-utils.js",

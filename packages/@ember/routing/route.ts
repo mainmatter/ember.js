@@ -8,14 +8,12 @@ import type { default as BucketCache } from './lib/cache';
 import computed from '@ember/-internals/metal/lib/computed';
 import { get } from '@ember/-internals/metal/lib/property_get';
 import { set } from '@ember/-internals/metal/lib/property_set';
-import getProperties from '@ember/-internals/metal/lib/get_properties';
 import setProperties from '@ember/-internals/metal/lib/set_properties';
 import EmberObject from '@ember/object';
 import Evented from '@ember/object/evented';
 import { copyDefaultValue } from '@ember/-internals/routing/route-managers/classic/query-params';
 import ActionHandler from '@ember/-internals/runtime/lib/mixins/action_handler';
 import typeOf from '@ember/utils/lib/type-of';
-import { isProxy } from '@ember/-internals/utils/lib/is_proxy';
 import lookupDescriptor from '@ember/-internals/utils/lib/lookup-descriptor';
 import type { AnyFn } from '@ember/-internals/utility-types';
 import Controller from '@ember/controller';
@@ -28,19 +26,20 @@ import { once } from '@ember/runloop';
 import { setRouteManager } from '@ember/-internals/routing/route-managers/registry';
 import { ClassicRouteManager } from '@ember/-internals/routing/route-managers/classic/manager';
 import { hasClassicInterop } from '@ember/-internals/routing/route-managers/api';
-import type {
-  BaseRoute,
-  InternalRouteInfo,
-  BaseRoute as IRoute,
-  Transition,
-  TransitionState,
-} from 'router_js';
+import type { InternalRouteInfo, BaseRoute as IRoute, Transition } from 'router_js';
 import { getRouteManagement, PARAMS_SYMBOL, STATE_SYMBOL } from 'router_js';
 import type { default as EmberRouter } from '@ember/routing/router';
 import { default as generateController } from './lib/generate_controller';
-import type { ExpandedControllerQueryParam, NamedRouteArgs } from './lib/utils';
+import { defaultSerialize, hasDefaultSerialize } from './lib/default-serialize';
+import { setDefaultRouteFactory } from './lib/default-route';
+import type {
+  ExpandedControllerQueryParam,
+  NamedRouteArgs,
+  RouteTransitionState,
+} from './lib/utils';
 import {
   calculateCacheKey,
+  getFullQueryParams,
   normalizeControllerQueryParams,
   prefixRouteNameArg,
   stashParamNames,
@@ -76,11 +75,6 @@ export type QueryParamMeta = {
     active(prop: string, value: unknown): any;
     allowOverrides(prop: string, value: unknown): any;
   };
-};
-
-type RouteTransitionState = TransitionState<BaseRoute> & {
-  fullQueryParams?: Record<string, unknown>;
-  queryParamsFor?: Record<string, Record<string, unknown>>;
 };
 
 type MaybeParameters<T> = T extends AnyFn ? Parameters<T> : unknown[];
@@ -273,39 +267,6 @@ interface Route<Model = unknown> extends IRoute<Model>, ActionHandler, Evented {
     @public
   */
   error?(error: Error, transition: Transition): boolean | void;
-}
-
-class Route<Model = unknown> extends EmberObject.extend(ActionHandler, Evented) implements IRoute {
-  static isRouteFactory = true;
-
-  // These properties will end up appearing in the public interface because we
-  // `implements IRoute` from `router.js`, which has them as part of *its*
-  // public contract. We mark them as `@internal` so they at least signal to
-  // people subclassing `Route` that they should not use them.
-  /** @internal */
-  context = {} as Model;
-  /** @internal */
-  declare currentModel: Model;
-
-  /** @internal */
-  _bucketCache!: BucketCache;
-  /** @internal */
-  _internalName!: string;
-
-  private _names: unknown;
-
-  _router!: EmberRouter;
-
-  constructor(owner?: Owner) {
-    super(owner);
-
-    if (owner) {
-      let router = owner.lookup('router:main');
-      let bucketCache = owner.lookup(P`-bucket-cache:main`);
-      this._router = router as EmberRouter;
-      this._bucketCache = bucketCache as BucketCache;
-    }
-  }
 
   /**
     A hook you can implement to convert the route's model into parameters
@@ -352,27 +313,43 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler, Evented) 
     @since 1.0.0
     @public
   */
-  serialize(model: Model, params: string[]): { [key: string]: unknown } | undefined {
-    if (params.length < 1 || !model) {
-      return;
-    }
+  // Declared here rather than implemented on the class, because the
+  // implementation is assigned to the prototype below as `defaultSerialize`
+  // itself: `hasDefaultSerialize` detects an un-overridden `serialize` by
+  // comparing against that function by identity.
+  serialize(model: Model, params: string[]): { [key: string]: unknown } | undefined;
+}
 
-    let object: Record<string, unknown> = {};
-    if (params.length === 1) {
-      let [name] = params;
-      assert('has name', name);
-      if (typeof model === 'object' && name in model) {
-        object[name] = get(model, name);
-      } else if (/_id$/.test(name)) {
-        object[name] = get(model, 'id');
-      } else if (isProxy(model)) {
-        object[name] = get(model, name);
-      }
-    } else {
-      object = getProperties(model, params);
-    }
+class Route<Model = unknown> extends EmberObject.extend(ActionHandler, Evented) implements IRoute {
+  static isRouteFactory = true;
 
-    return object;
+  // These properties will end up appearing in the public interface because we
+  // `implements IRoute` from `router.js`, which has them as part of *its*
+  // public contract. We mark them as `@internal` so they at least signal to
+  // people subclassing `Route` that they should not use them.
+  /** @internal */
+  context = {} as Model;
+  /** @internal */
+  declare currentModel: Model;
+
+  /** @internal */
+  _bucketCache!: BucketCache;
+  /** @internal */
+  _internalName!: string;
+
+  private _names: unknown;
+
+  _router!: EmberRouter;
+
+  constructor(owner?: Owner) {
+    super(owner);
+
+    if (owner) {
+      let router = owner.lookup('router:main');
+      let bucketCache = owner.lookup(P`-bucket-cache:main`);
+      this._router = router as EmberRouter;
+      this._bucketCache = bucketCache as BucketCache;
+    }
   }
 
   /**
@@ -1781,29 +1758,6 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler, Evented) 
   >;
 }
 
-export function getFullQueryParams(router: EmberRouter, state: RouteTransitionState) {
-  if (state.fullQueryParams) {
-    return state.fullQueryParams;
-  }
-
-  let haveAllRouteInfosResolved = state.routeInfos.every((routeInfo) => routeInfo.route);
-
-  let fullQueryParamsState: Record<string, unknown> = {
-    ...state.queryParams,
-  };
-
-  router._deserializeQueryParams(state.routeInfos, fullQueryParamsState);
-
-  // only cache query params state if all routeinfos have resolved; it's possible
-  // for lazy routes to not have resolved when `getFullQueryParams` is called, so
-  // we wait until all routes have resolved prior to caching query params state
-  if (haveAllRouteInfosResolved) {
-    state.fullQueryParams = fullQueryParamsState;
-  }
-
-  return fullQueryParamsState;
-}
-
 function getQueryParamsFor(route: Route, state: RouteTransitionState): Record<string, unknown> {
   state.queryParamsFor = state.queryParamsFor || {};
   let name = route.fullRouteName;
@@ -1922,13 +1876,18 @@ function getEngineRouteName(engine: EngineInstance, routeName: string) {
   return routeName;
 }
 
-const defaultSerialize = Route.prototype.serialize;
+// Assigned straight onto the prototype rather than through `reopen`, because
+// `reopen` defers to lazy mixin application (nothing lands on the prototype
+// until the first instance is created) while `hasDefaultSerialize` inspects
+// `SomeRoute.prototype` before any route is instantiated. The assignment is
+// also what keeps the function identical to `defaultSerialize`, which is what
+// that check compares against.
+Route.prototype.serialize = defaultSerialize;
 
-export { defaultSerialize };
-
-export function hasDefaultSerialize(route: Route): boolean {
-  return route.serialize === defaultSerialize;
-}
+// Re-exported for backwards compatibility; they now live in a classic-free
+// module so that `@ember/routing/router` can use them without importing this
+// one.
+export { defaultSerialize, hasDefaultSerialize };
 
 // Set these here so they can be overridden with extend
 Route.reopen({
@@ -2031,5 +1990,10 @@ Route.reopen({
 });
 
 setRouteManager((owner) => new ClassicRouteManager(owner), Route);
+
+// Importing classic is what makes `route:basic` available. Apps that drive
+// every route with their own route manager never import this module, so they
+// never get the classic base class registered.
+setDefaultRouteFactory(Route);
 
 export default Route;

@@ -19,7 +19,7 @@ import { assert } from '@ember/debug';
 import Router from '@ember/routing/router';
 import EventDispatcher from '@ember/-internals/views/lib/system/event_dispatcher';
 import type Registry from '@ember/-internals/container/lib/registry';
-import type { SimpleElement } from '@simple-dom/interface';
+import type { SimpleDocumentFragment, SimpleElement } from '@simple-dom/interface';
 
 /**
   The `ApplicationInstance` encapsulates all of the stateful aspects of a
@@ -142,9 +142,23 @@ class ApplicationInstance extends EngineInstance {
     return this._router;
   }
 
+  #rootFragment?: DocumentFragment | SimpleDocumentFragment;
+
   renderRootComponent(component: object) {
     setRenderer(this, this.lookup('renderer:-dom') as BaseRenderer);
-    renderComponent(component, { into: this.rootElement!, owner: this, appendIntoTarget: true });
+    let env = this.lookup('-environment:main') as { _renderMode?: string };
+
+    if (env._renderMode === 'rehydrate') {
+      // Cursor form avoids clearing rootElement
+      renderComponent(component, {
+        into: { element: this.rootElement as SimpleElement, nextSibling: null },
+        owner: this,
+      });
+    } else {
+      this.#rootFragment ??= this.rootElement!.ownerDocument.createDocumentFragment();
+      renderComponent(component, { into: this.#rootFragment, owner: this });
+      (this.rootElement as Element).appendChild(this.#rootFragment as DocumentFragment);
+    }
   }
 
   /**

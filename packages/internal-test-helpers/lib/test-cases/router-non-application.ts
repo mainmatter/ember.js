@@ -13,6 +13,7 @@ import { runAppend, runDestroy } from '../run';
 import type { BootOptions, EngineInstanceOptions } from '@ember/engine/instance';
 import type EngineInstance from '@ember/engine/instance';
 import type { InternalFactory } from '@ember/-internals/owner';
+import type { SimpleElement } from '@simple-dom/interface';
 
 export default class RouterNonApplicationTestCase extends AbstractTestCase {
   owner: EngineInstance;
@@ -43,7 +44,10 @@ export default class RouterNonApplicationTestCase extends AbstractTestCase {
     let appInstance = {
       renderRootComponent: (component: object) => {
         setRenderer(owner, this.renderer);
-        renderComponent(component, { into: this.element, owner, appendIntoTarget: true });
+        renderComponent(component, {
+          into: { element: this.element as unknown as SimpleElement, nextSibling: null },
+          owner,
+        });
       },
     };
     owner.register('-application-instance:main', appInstance, { instantiate: false });

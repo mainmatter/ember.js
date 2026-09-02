@@ -95,10 +95,9 @@ function render(_template) {
   if (!this._hasRendered) {
     this.run(function () {
       module.component = renderComponent(definition, {
-        into: module.element,
+        into: { element: module.element, nextSibling: null },
         owner: module.owner,
         env: { document: module.element, isInteractive: false },
-        appendIntoTarget: true,
       });
     });
     this._hasRendered = true;

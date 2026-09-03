@@ -144,7 +144,10 @@ class ApplicationInstance extends EngineInstance {
 
   renderRootComponent(component: object) {
     setRenderer(this, this.lookup('renderer:-dom') as BaseRenderer);
-    renderComponent(component, { into: this.rootElement!, owner: this, appendIntoTarget: true });
+    const fragmentTarget = this.rootElement!.ownerDocument!.createDocumentFragment();
+    // TODO: there are too many lies in these types
+    renderComponent(component, { into: fragmentTarget, owner: this, appendIntoTarget: true });
+    (this.rootElement! as Element).appendChild(fragmentTarget as Node)
   }
 
   /**

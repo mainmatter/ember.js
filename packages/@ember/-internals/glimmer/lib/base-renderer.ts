@@ -26,7 +26,7 @@ import { clientBuilder } from '@glimmer/runtime/lib/vm/element-builder';
 import { inTransaction, runtimeOptions } from '@glimmer/runtime/lib/environment';
 import { renderComponent as glimmerRenderComponent } from '@glimmer/runtime/lib/render';
 import { CURRENT_TAG, validateTag, valueForTag } from '@glimmer/validator/lib/validators';
-import type { SimpleDocument, SimpleElement } from '@simple-dom/interface';
+import type { SimpleDocument, SimpleElement, SimpleDocumentFragment } from '@simple-dom/interface';
 import { hasDOM } from '../../browser-environment';
 import { EmberEnvironmentDelegate } from './environment';
 import ResolverImpl from './resolver';
@@ -402,7 +402,7 @@ export class RendererState {
   }
 }
 
-type IntoTarget = Cursor | Element | SimpleElement;
+type IntoTarget = Cursor | Element | SimpleElement | DocumentFragment | SimpleDocumentFragment;
 
 /**
  * The returned object from `renderComponent`

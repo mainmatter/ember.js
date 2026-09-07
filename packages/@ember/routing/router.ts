@@ -1762,24 +1762,25 @@ export function triggerEvent<N extends MethodNamesOf<typeof defaultActionHandler
   }
 
   let eventWasHandled = false;
-  let routeInfo, handler, actionHandler;
 
   for (let i = routeInfos.length - 1; i >= 0; i--) {
-    routeInfo = routeInfos[i];
+    let routeInfo = routeInfos[i];
     assert('[BUG] Missing routeInfo', routeInfo);
-    handler = routeInfo.route as Route | undefined;
-    actionHandler = handler && handler.actions && handler.actions[name];
-    if (actionHandler) {
-      if (actionHandler.apply(handler, args) === true) {
-        eventWasHandled = true;
-      } else {
-        // Should only hit here if a non-bubbling error action is triggered on a route.
-        if (name === 'error') {
-          assert('[BUG] Missing handler', handler);
-          handler._router._markErrorAsHandled(args[0] as Error);
-        }
-        return;
-      }
+
+    let { manager, bucket } = routeInfo;
+    if (manager === undefined || bucket === undefined || !hasClassicInterop(manager)) {
+      continue;
+    }
+
+    let bubbled = manager.invokeAction(bucket, name, args);
+    if (bubbled === undefined) {
+      continue;
+    }
+
+    if (bubbled) {
+      eventWasHandled = true;
+    } else {
+      return;
     }
   }
 

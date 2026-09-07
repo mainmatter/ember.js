@@ -298,6 +298,25 @@ export class ClassicRouteManager implements RouteManagerWithClassicInterop<Class
     bucket.route.redirect(context as never, transition);
   }
 
+  invokeAction(bucket: ClassicRouteBucket, name: string, args: unknown[]): boolean | undefined {
+    const route = bucket.route;
+    const actionHandler = route.actions?.[name];
+
+    if (!actionHandler) {
+      return undefined;
+    }
+
+    if (actionHandler.apply(route, args) === true) {
+      return true;
+    }
+
+    if (name === 'error') {
+      route._router._markErrorAsHandled(args[0] as Error);
+    }
+
+    return false;
+  }
+
   triggerLoadingEvent(bucket: ClassicRouteBucket, transition: Transition): void {
     const active = transition as ActiveTransition;
     if (!active.isActive) {

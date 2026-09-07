@@ -466,6 +466,8 @@ export interface RouteManagerWithClassicInterop<
    */
   redirect(bucket: Bucket, routeInfo: RouteInfo, context: unknown, transition: Transition): void;
 
+  invokeAction(bucket: Bucket, name: string, args: unknown[]): boolean | undefined;
+
   triggerLoadingEvent(bucket: Bucket, transition: Transition): void;
 
   triggerErrorEvent(bucket: Bucket, transition: Transition, error: Error, route: unknown): void;

@@ -58,17 +58,6 @@ export default class Transition implements Partial<Promise<unknown>> {
   routeInfos: InternalRouteInfo[];
   targetName: Maybe<string>;
   pivotBucket: Maybe<object>;
-
-  // The route behind `pivotBucket`.
-  get pivotHandler(): Maybe<object> {
-    let bucket = this.pivotBucket;
-
-    if (bucket === undefined) {
-      return undefined;
-    }
-
-    return this.routeInfos.find((routeInfo) => routeInfo.bucket === bucket)?.route;
-  }
   sequence: number;
   isAborted = false;
   isActive = true;

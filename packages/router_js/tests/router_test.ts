@@ -2,7 +2,7 @@
 import type { MatchCallback } from 'route-recognizer';
 import type { Transition } from '../index';
 import type Router from '../index';
-import { associateRouteManagement } from '../index';
+import { associateRouteManagement, getRouteManagement } from '../index';
 import type { Dict, Maybe } from '../lib/core';
 import type {
   IModel,
@@ -2357,22 +2357,22 @@ scenarios.forEach(function (scenario) {
       }, shouldNotHappen(assert));
   });
 
-  QUnit.test('pivotHandler is exposed on Transition object', function (assert) {
+  QUnit.test('pivotBucket is exposed on Transition object', function (assert) {
     assert.expect(3);
 
     routes = {
       showAllPosts: createHandler('showAllPosts', {
         beforeModel: function (transition: Transition) {
-          assert.notOk(transition.pivotHandler, 'First route transition has no pivot route');
+          assert.notOk(transition.pivotBucket, 'First route transition has no pivot route');
         },
       }),
 
       showPopularPosts: createHandler('showPopularPosts', {
         beforeModel: function (transition: Transition) {
           assert.equal(
-            transition.pivotHandler,
-            routes['postIndex'],
-            'showAllPosts -> showPopularPosts pivotHandler is postIndex'
+            transition.pivotBucket,
+            getRouteManagement(routes['postIndex']!)?.bucket,
+            'showAllPosts -> showPopularPosts pivotBucket is postIndex'
           );
         },
       }),
@@ -2381,7 +2381,7 @@ scenarios.forEach(function (scenario) {
 
       about: createHandler('about', {
         beforeModel: function (transition: Transition) {
-          assert.notOk(transition.pivotHandler, 'top-level transition has no pivotHandler');
+          assert.notOk(transition.pivotBucket, 'top-level transition has no pivotBucket');
         },
       }),
     };

@@ -1,14 +1,13 @@
 /* eslint-disable qunit/no-conditional-assertions */
 import type { MatchCallback } from 'route-recognizer';
-import type { BaseRoute, Transition } from '../index';
+import type { Transition } from '../index';
 import type Router from '../index';
 import type { Dict, Maybe } from '../lib/core';
 import type RouteInfo from '../lib/route-info';
-import type { ClassicRoute } from '../lib/route-info';
 import { Promise } from 'rsvp';
 import { createHandler, TestRouter, trigger, ignoreTransitionError } from './test_helpers';
 
-let router: Router<BaseRoute>, handlers: Dict<BaseRoute>, expectedUrl: Maybe<string>;
+let router: Router, handlers: Dict<object>, expectedUrl: Maybe<string>;
 let scenarios = [
   {
     name: 'Sync Get Handler',
@@ -46,12 +45,7 @@ scenarios.forEach(function (scenario) {
       routeWillChange() {}
       didTransition() {}
       willTransition() {}
-      triggerEvent(
-        handlerInfos: RouteInfo<ClassicRoute>[],
-        ignoreFailure: boolean,
-        name: string,
-        args: any[]
-      ) {
+      triggerEvent(handlerInfos: RouteInfo[], ignoreFailure: boolean, name: string, args: any[]) {
         trigger(handlerInfos, ignoreFailure, name, ...args);
       }
       replaceURL(name: string) {

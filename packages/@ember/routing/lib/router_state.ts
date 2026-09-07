@@ -1,18 +1,15 @@
-import type { BaseRoute, ModelFor, TransitionState } from 'router_js';
+import type { TransitionState } from 'router_js';
 import type Router from 'router_js';
 import { shallowEqual } from './utils';
 import type Route from '@ember/routing/route';
+import type { ModelFor } from '@ember/routing/route';
 import type EmberRouter from '@ember/routing/router';
 
 export default class RouterState {
-  router: Router<BaseRoute>;
+  router: Router;
   emberRouter: EmberRouter;
-  routerJsState: TransitionState<BaseRoute>;
-  constructor(
-    emberRouter: EmberRouter,
-    router: Router<BaseRoute>,
-    routerJsState: TransitionState<BaseRoute>
-  ) {
+  routerJsState: TransitionState;
+  constructor(emberRouter: EmberRouter, router: Router, routerJsState: TransitionState) {
     this.emberRouter = emberRouter;
     this.router = router;
     this.routerJsState = routerJsState;

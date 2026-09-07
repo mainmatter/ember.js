@@ -27,7 +27,7 @@ import {
   ignoreTransitionError,
 } from './test_helpers';
 
-let router: Router<ClassicRoute>;
+let router: Router;
 let url: string | undefined;
 let routes: Dict<ClassicRoute>;
 
@@ -105,12 +105,7 @@ scenarios.forEach(function (scenario) {
       replaceURL(name: string) {
         this.updateURL(name);
       }
-      triggerEvent(
-        handlerInfos: RouteInfo<ClassicRoute>[],
-        ignoreFailure: boolean,
-        name: string,
-        args: any[]
-      ) {
+      triggerEvent(handlerInfos: RouteInfo[], ignoreFailure: boolean, name: string, args: any[]) {
         trigger(handlerInfos, ignoreFailure, name, ...args);
       }
 
@@ -163,7 +158,7 @@ scenarios.forEach(function (scenario) {
     });
   });
 
-  function routePath(infos: RouteInfo<ClassicRoute>[]) {
+  function routePath(infos: RouteInfo[]) {
     let path = [];
 
     for (let i = 0, l = infos.length; i < l; i++) {
@@ -2755,7 +2750,7 @@ scenarios.forEach(function (scenario) {
       }),
     };
     router.triggerEvent = function (
-      handlerInfos: RouteInfo<ClassicRoute>[],
+      handlerInfos: RouteInfo[],
       ignoreFailure: boolean,
       name: string,
       args: any[]
@@ -4489,7 +4484,7 @@ scenarios.forEach(function (scenario) {
 
     router
       .handleURL('/index')
-      .then(function (route: ClassicRoute) {
+      .then(function (route: unknown) {
         assert.ok((route as any)['borfIndex'], 'resolved to index handler');
         return router.transitionTo('about');
       }, shouldNotHappen(assert))
@@ -4874,7 +4869,7 @@ scenarios.forEach(function (scenario) {
       router
         .transitionTo('/index')
         .followRedirects()
-        .then(function (handler: ClassicRoute) {
+        .then(function (handler: unknown) {
           assert.equal(
             handler,
             routes['index'],
@@ -4883,7 +4878,7 @@ scenarios.forEach(function (scenario) {
 
           return router.transitionTo('about').followRedirects();
         })
-        .then(function (handler: ClassicRoute) {
+        .then(function (handler: unknown) {
           assert.equal(
             handler,
             routes['faq'],
@@ -4926,7 +4921,7 @@ scenarios.forEach(function (scenario) {
       router
         .transitionTo('/index')
         .followRedirects()
-        .then(function (handler: ClassicRoute) {
+        .then(function (handler: unknown) {
           assert.equal(
             handler,
             routes['about'],

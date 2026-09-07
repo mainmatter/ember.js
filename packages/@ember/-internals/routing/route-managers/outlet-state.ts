@@ -1,4 +1,4 @@
-import { invokableFor, type BaseRoute, type InternalRouteInfo } from 'router_js';
+import { invokableFor, type InternalRouteInfo } from 'router_js';
 import { tracked } from '@ember/-internals/metal/lib/tracked';
 
 function isPromise(value: object): value is Promise<object> {
@@ -47,7 +47,7 @@ export class OutletState implements OutletParent {
       getInvokable(bucket: object): Promise<object>;
     },
     readonly bucket: object,
-    readonly routeInfo: InternalRouteInfo<BaseRoute>
+    readonly routeInfo: InternalRouteInfo
   ) {
     this.context = routeInfo.context;
 

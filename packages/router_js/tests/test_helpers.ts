@@ -25,11 +25,11 @@ function assertAbort(assert: Assert) {
   };
 }
 
-function transitionToWithAbort(assert: Assert, router: Router<ClassicRoute>, path: string) {
+function transitionToWithAbort(assert: Assert, router: Router, path: string) {
   return router.transitionTo(path).then(shouldNotHappen(assert), assertAbort(assert));
 }
 
-function replaceWith(router: Router<ClassicRoute>, path: string) {
+function replaceWith(router: Router, path: string) {
   return router.transitionTo.apply(router, [path]).method('replace');
 }
 
@@ -42,7 +42,7 @@ function shouldNotHappen(assert: Assert, _message?: string) {
   };
 }
 
-export function isExiting(route: ClassicRoute | string, routeInfos: RouteInfo<ClassicRoute>[]) {
+export function isExiting(route: ClassicRoute | string, routeInfos: RouteInfo[]) {
   for (let i = 0, len = routeInfos.length; i < len; ++i) {
     let routeInfo = routeInfos[i];
     if (routeInfo!.name === route || routeInfo!.route === route) {
@@ -306,17 +306,12 @@ export function createHandler<T extends IModel>(
   return handler;
 }
 
-export class TestRouter<R extends ClassicRoute = ClassicRoute> extends Router<R> {
-  didTransition(_routeInfos?: RouteInfo<R>[]) {}
+export class TestRouter extends Router {
+  didTransition(_routeInfos?: RouteInfo[]) {}
   willTransition() {}
   updateURL(_url: string): void {}
   replaceURL(_url: string): void {}
-  triggerEvent(
-    _handlerInfos: RouteInfo<R>[],
-    _ignoreFailure: boolean,
-    _name: string,
-    _args: any[]
-  ) {}
+  triggerEvent(_handlerInfos: RouteInfo[], _ignoreFailure: boolean, _name: string, _args: any[]) {}
   routeDidChange(_transition?: PublicTransition) {}
   routeWillChange() {}
   transitionDidError(error: TransitionError, transition: PublicTransition) {
@@ -356,12 +351,9 @@ export class TestRouter<R extends ClassicRoute = ClassicRoute> extends Router<R>
   }
 }
 
-export function createHandlerInfo(
-  name: string,
-  options: Dict<unknown> = {}
-): RouteInfo<ClassicRoute> {
-  class Stub extends RouteInfo<ClassicRoute> {
-    constructor(name: string, router: Router<ClassicRoute>, handler?: ClassicRoute) {
+export function createHandlerInfo(name: string, options: Dict<unknown> = {}): RouteInfo {
+  class Stub extends RouteInfo {
+    constructor(name: string, router: Router, handler?: ClassicRoute) {
       super(router, name, [], handler);
     }
     getModel(_transition: Transition) {
@@ -381,7 +373,7 @@ export function createHandlerInfo(
 }
 
 export function trigger(
-  handlerInfos: RouteInfo<ClassicRoute>[],
+  handlerInfos: RouteInfo[],
   ignoreFailure: boolean,
   name: string,
   ...args: any[]
@@ -397,12 +389,13 @@ export function trigger(
 
   for (let i = handlerInfos.length - 1; i >= 0; i--) {
     let currentHandlerInfo = handlerInfos[i]!,
-      currentHandler = currentHandlerInfo.route;
+      currentHandler = currentHandlerInfo.route as ClassicRoute | undefined;
 
     // If there is no handler, it means the handler hasn't resolved yet which
     // means that we should trigger the event later when the handler is available
     if (!currentHandler) {
-      currentHandlerInfo.routePromise!.then(function (resolvedHandler) {
+      currentHandlerInfo.routePromise!.then(function (route: object) {
+        let resolvedHandler = route as ClassicRoute;
         if (resolvedHandler.events?.[name]) {
           resolvedHandler.events[name].apply(resolvedHandler, args);
         }

@@ -1,4 +1,4 @@
-import type { BaseRoute, default as InternalRouteInfo } from '../route-info';
+import type { default as InternalRouteInfo } from '../route-info';
 import { UnresolvedRouteInfoByParam } from '../route-info';
 import type Router from '../router';
 import { TransitionIntent } from '../transition-intent';
@@ -6,17 +6,17 @@ import TransitionState from '../transition-state';
 import UnrecognizedURLError from '../unrecognized-url-error';
 import { merge } from '../utils';
 
-export default class URLTransitionIntent<R extends BaseRoute> extends TransitionIntent<R> {
-  preTransitionState?: TransitionState<R>;
+export default class URLTransitionIntent extends TransitionIntent {
+  preTransitionState?: TransitionState;
   url: string;
-  constructor(router: Router<R>, url: string, data?: object) {
+  constructor(router: Router, url: string, data?: object) {
     super(router, data);
     this.url = url;
     this.preTransitionState = undefined;
   }
 
-  applyToState(oldState: TransitionState<R>) {
-    let newState = new TransitionState<R>();
+  applyToState(oldState: TransitionState) {
+    let newState = new TransitionState();
     let results = this.router.recognizer.recognize(this.url),
       i,
       len;
@@ -30,7 +30,7 @@ export default class URLTransitionIntent<R extends BaseRoute> extends Transition
 
     // For the case where the route is loaded asynchronously, the error will be
     // thrown once it is loaded.
-    function checkAccessibility(routeInfo: InternalRouteInfo<R>) {
+    function checkAccessibility(routeInfo: InternalRouteInfo) {
       if (routeInfo.inaccessibleByURL) {
         throw new UnrecognizedURLError(_url);
       }

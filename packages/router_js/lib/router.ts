@@ -3,7 +3,7 @@ import type { MatchCallback, Params, QueryParams } from 'route-recognizer';
 import RouteRecognizer from 'route-recognizer';
 import { Promise } from 'rsvp';
 import type { Dict, Maybe, Option } from './core';
-import type { ModelFor, BaseRoute, RouteInfo, RouteInfoWithAttributes } from './route-info';
+import type { RouteInfo, RouteInfoWithAttributes } from './route-info';
 import type InternalRouteInfo from './route-info';
 import { toReadOnlyRouteInfo } from './route-info';
 import type { OpaqueTransition, PublicTransition as Transition } from './transition';
@@ -27,13 +27,13 @@ export interface ParsedHandler {
   names: string[];
 }
 
-export default abstract class Router<R extends BaseRoute> {
+export default abstract class Router {
   private _lastQueryParams = {};
   log?: (message: string) => void;
-  state?: TransitionState<R> = undefined;
-  oldState: Maybe<TransitionState<R>> = undefined;
-  activeTransition?: InternalTransition<R> = undefined;
-  currentRouteInfos?: InternalRouteInfo<R>[] = undefined;
+  state?: TransitionState = undefined;
+  oldState: Maybe<TransitionState> = undefined;
+  activeTransition?: InternalTransition = undefined;
+  currentRouteInfos?: InternalRouteInfo[] = undefined;
   _changedQueryParams?: Dict<unknown> = undefined;
   currentSequence = 0;
   recognizer: RouteRecognizer;
@@ -44,18 +44,18 @@ export default abstract class Router<R extends BaseRoute> {
     this.reset();
   }
 
-  abstract getRoute(name: string): R | Promise<R>;
-  abstract getSerializer(name: string): SerializerFunc<ModelFor<R>> | undefined;
+  abstract getRoute(name: string): object | Promise<object>;
+  abstract getSerializer(name: string): SerializerFunc<unknown> | undefined;
   abstract updateURL(url: string): void;
   abstract replaceURL(url: string): void;
   abstract willTransition(
-    oldRouteInfos: InternalRouteInfo<R>[],
-    newRouteInfos: InternalRouteInfo<R>[],
+    oldRouteInfos: InternalRouteInfo[],
+    newRouteInfos: InternalRouteInfo[],
     transition: Transition
   ): void;
-  abstract didTransition(routeInfos: InternalRouteInfo<R>[]): void;
+  abstract didTransition(routeInfos: InternalRouteInfo[]): void;
   abstract triggerEvent(
-    routeInfos: InternalRouteInfo<R>[],
+    routeInfos: InternalRouteInfo[],
     ignoreFailure: boolean,
     name: string,
     args: unknown[]
@@ -102,7 +102,7 @@ export default abstract class Router<R extends BaseRoute> {
 
   // Publishes each route after it resolves. This lets a resolved parent render
   // while its descendant is still loading.
-  onRouteResolved(routeInfo: InternalRouteInfo<R>, routeIndex: number): void {
+  onRouteResolved(routeInfo: InternalRouteInfo, routeIndex: number): void {
     const currentRouteInfos = this.currentRouteInfos ?? [];
     currentRouteInfos[routeIndex] = routeInfo;
     this.currentRouteInfos = currentRouteInfos;
@@ -118,9 +118,9 @@ export default abstract class Router<R extends BaseRoute> {
    */
   protected handleDidEnterError(
     error: unknown,
-    activeTransition: InternalTransition<R>,
-    newState: TransitionState<R>,
-    _preTransitionState: TransitionState<R> | undefined
+    activeTransition: InternalTransition,
+    newState: TransitionState,
+    _preTransitionState: TransitionState | undefined
   ): never {
     const errorRoute = newState.routeInfos[newState.routeInfos.length - 1]?.route;
     const reason = this.transitionDidError(
@@ -135,7 +135,7 @@ export default abstract class Router<R extends BaseRoute> {
   // disturbing already-rendering ancestor routes and fires `didEnter` so
   // classic activate/setup runs. Substates are classic machinery, so the
   // didEnter only goes to classic-interop managers.
-  onIntermediateTransition(newState: TransitionState<R>, transition: InternalTransition<R>): void {
+  onIntermediateTransition(newState: TransitionState, transition: InternalTransition): void {
     const partition = this.partitionRoutes(this.state!, newState);
     this.currentRouteInfos = [...partition.unchanged, ...partition.entered];
 
@@ -145,7 +145,7 @@ export default abstract class Router<R extends BaseRoute> {
     const navFrom = (transition.from ?? undefined) as RouteInfo | undefined;
     const navTo = transition.to as RouteInfo;
 
-    const fireDidEnter = (routeInfo: InternalRouteInfo<R>) => {
+    const fireDidEnter = (routeInfo: InternalRouteInfo) => {
       const { manager, bucket } = routeInfo;
       if (manager === undefined || bucket === undefined || !hasClassicInterop(manager)) {
         return;
@@ -184,8 +184,8 @@ export default abstract class Router<R extends BaseRoute> {
   // Resolves the transition's promise with the leaf route, preserving the
   // classic `finalizeTransition` contract.
   onTransitionSettled(
-    activeTransition: InternalTransition<R>,
-    newState: TransitionState<R>
+    activeTransition: InternalTransition,
+    newState: TransitionState
   ): Promise<unknown> {
     const partition = this.partitionRoutes(this.state!, newState);
     const preTransitionState = this.state;
@@ -384,8 +384,8 @@ export default abstract class Router<R extends BaseRoute> {
   queryParamsTransition(
     changelist: ChangeList,
     wasTransitioning: boolean,
-    oldState: TransitionState<R>,
-    newState: TransitionState<R>
+    oldState: TransitionState,
+    newState: TransitionState
   ): OpaqueTransition {
     this.fireQueryParamDidChange(newState, changelist);
 
@@ -417,7 +417,7 @@ export default abstract class Router<R extends BaseRoute> {
       this.routeWillChange(newTransition);
 
       newTransition.promise = newTransition.promise!.then(
-        (result: TransitionState<R> | BaseRoute | Error | undefined) => {
+        (result: TransitionState | object | Error | undefined) => {
           if (!newTransition.isAborted) {
             this._updateURL(newTransition, oldState);
             this.didTransition(this.currentRouteInfos!);
@@ -434,7 +434,7 @@ export default abstract class Router<R extends BaseRoute> {
     }
   }
 
-  transitionByIntent(intent: TransitionIntent<R>, isIntermediate: boolean): InternalTransition<R> {
+  transitionByIntent(intent: TransitionIntent, isIntermediate: boolean): InternalTransition {
     try {
       return this.getTransitionByIntent(intent, isIntermediate);
     } catch (e) {
@@ -443,7 +443,7 @@ export default abstract class Router<R extends BaseRoute> {
   }
 
   recognize(url: string): Option<RouteInfo> {
-    let intent = new URLTransitionIntent<R>(this, url);
+    let intent = new URLTransitionIntent(this, url);
     let newState = this.generateNewState(intent);
 
     if (newState === null) {
@@ -458,7 +458,7 @@ export default abstract class Router<R extends BaseRoute> {
   }
 
   recognizeAndLoad(url: string): Promise<RouteInfoWithAttributes> {
-    let intent = new URLTransitionIntent<R>(this, url);
+    let intent = new URLTransitionIntent(this, url);
     let newState = this.generateNewState(intent);
 
     if (newState === null) {
@@ -479,7 +479,7 @@ export default abstract class Router<R extends BaseRoute> {
     });
   }
 
-  private generateNewState(intent: TransitionIntent<R>): Option<TransitionState<R>> {
+  private generateNewState(intent: TransitionIntent): Option<TransitionState> {
     try {
       return intent.applyToState(this.state!, false);
     } catch (_e) {
@@ -488,12 +488,12 @@ export default abstract class Router<R extends BaseRoute> {
   }
 
   private getTransitionByIntent(
-    intent: TransitionIntent<R>,
+    intent: TransitionIntent,
     isIntermediate: boolean
-  ): InternalTransition<R> {
+  ): InternalTransition {
     let wasTransitioning = Boolean(this.activeTransition);
     let oldState = wasTransitioning ? this.activeTransition![STATE_SYMBOL] : this.state;
-    let newTransition: InternalTransition<R>;
+    let newTransition: InternalTransition;
 
     let newState = intent.applyToState(oldState!, isIntermediate);
     let queryParamChangelist = getChangelist(oldState!.queryParams, newState.queryParams);
@@ -512,7 +512,7 @@ export default abstract class Router<R extends BaseRoute> {
           );
           newTransition.queryParamsOnly = true;
           // SAFETY: The returned OpaqueTransition should actually be this.
-          return newTransition as InternalTransition<R>;
+          return newTransition as InternalTransition;
         }
         // When a query-param-only transition is started during an active
         // transition (for example, from beforeModel/afterModel), avoid the
@@ -560,7 +560,7 @@ export default abstract class Router<R extends BaseRoute> {
     // For our purposes, swap out the promise to resolve
     // after the transition has been finalized.
     newTransition.promise = newTransition.promise!.then(
-      (result: TransitionState<R>) => {
+      (result: TransitionState) => {
         return this.onTransitionSettled(newTransition, result);
       },
       null,
@@ -589,9 +589,9 @@ export default abstract class Router<R extends BaseRoute> {
 */
   private doTransition(
     name?: string,
-    modelsArray: [...ModelFor<R>[]] | [...ModelFor<R>[], { queryParams: QueryParams }] = [],
+    modelsArray: [...unknown[]] | [...unknown[], { queryParams: QueryParams }] = [],
     isIntermediate = false
-  ): InternalTransition<R> {
+  ): InternalTransition {
     let lastArg = modelsArray[modelsArray.length - 1];
     let queryParams: Dict<unknown> = {};
 
@@ -609,7 +609,7 @@ export default abstract class Router<R extends BaseRoute> {
       // A query param update is really just a transition
       // into the route you're already on.
       let { routeInfos } = this.state!;
-      intent = new NamedTransitionIntent<R>(
+      intent = new NamedTransitionIntent(
         this,
         routeInfos[routeInfos.length - 1]!.name,
         undefined,
@@ -618,15 +618,15 @@ export default abstract class Router<R extends BaseRoute> {
       );
     } else if (name.charAt(0) === '/') {
       log(this, 'Attempting URL transition to ' + name);
-      intent = new URLTransitionIntent<R>(this, name);
+      intent = new URLTransitionIntent(this, name);
     } else {
       log(this, 'Attempting transition to ' + name);
-      intent = new NamedTransitionIntent<R>(
+      intent = new NamedTransitionIntent(
         this,
         name,
         undefined,
         // SAFETY: We know this to be the case since we removed the last item if it was QPs
-        modelsArray as ModelFor<R>[],
+        modelsArray as unknown[],
         queryParams
       );
     }
@@ -639,7 +639,7 @@ export default abstract class Router<R extends BaseRoute> {
 
   Fires queryParamsDidChange event
 */
-  private fireQueryParamDidChange(newState: TransitionState<R>, queryParamChangelist: ChangeList) {
+  private fireQueryParamDidChange(newState: TransitionState, queryParamChangelist: ChangeList) {
     // If queryParams changed trigger event
     if (queryParamChangelist) {
       // This is a little hacky but we need some way of storing
@@ -698,11 +698,11 @@ export default abstract class Router<R extends BaseRoute> {
 */
   // Exposed so manager-driven routers (e.g. EmberRouter) can compute
   // partitions when orchestrating their own lifecycle.
-  partitionRoutes(oldState: TransitionState<R>, newState: TransitionState<R>) {
+  partitionRoutes(oldState: TransitionState, newState: TransitionState) {
     let oldRouteInfos = oldState.routeInfos;
     let newRouteInfos = newState.routeInfos;
 
-    let routes: RoutePartition<R> = {
+    let routes: RoutePartition = {
       updatedContext: [],
       exited: [],
       entered: [],
@@ -748,7 +748,7 @@ export default abstract class Router<R extends BaseRoute> {
 
   // Exposed so manager-driven routers can update the URL after awaiting
   // their async lifecycle.
-  _updateURL(transition: OpaqueTransition, state: TransitionState<R>) {
+  _updateURL(transition: OpaqueTransition, state: TransitionState) {
     let urlMethod: string | null = transition.urlMethod;
 
     if (!urlMethod) {
@@ -814,7 +814,7 @@ export default abstract class Router<R extends BaseRoute> {
   // Exposed so manager-driven routers can finalize QPs as part of their
   // own transition settlement.
   finalizeQueryParamChange(
-    resolvedHandlers: InternalRouteInfo<R>[],
+    resolvedHandlers: InternalRouteInfo[],
     newQueryParams: Dict<unknown>,
     transition: OpaqueTransition
   ) {
@@ -859,14 +859,14 @@ export default abstract class Router<R extends BaseRoute> {
     return finalQueryParams;
   }
 
-  private toReadOnlyInfos(newTransition: OpaqueTransition, newState: TransitionState<R>) {
+  private toReadOnlyInfos(newTransition: OpaqueTransition, newState: TransitionState) {
     let oldRouteInfos = this.state!.routeInfos;
     this.fromInfos(newTransition, oldRouteInfos);
     this.toInfos(newTransition, newState.routeInfos);
     this._lastQueryParams = newState.queryParams;
   }
 
-  private fromInfos(newTransition: OpaqueTransition, oldRouteInfos: InternalRouteInfo<R>[]) {
+  private fromInfos(newTransition: OpaqueTransition, oldRouteInfos: InternalRouteInfo[]) {
     if (newTransition !== undefined && oldRouteInfos.length > 0) {
       let fromInfos = toReadOnlyRouteInfo(oldRouteInfos, Object.assign({}, this._lastQueryParams), {
         includeAttributes: true,
@@ -878,7 +878,7 @@ export default abstract class Router<R extends BaseRoute> {
 
   public toInfos(
     newTransition: OpaqueTransition,
-    newRouteInfos: InternalRouteInfo<R>[],
+    newRouteInfos: InternalRouteInfo[],
     includeAttributes = false
   ) {
     if (newTransition !== undefined && newRouteInfos.length > 0) {
@@ -891,10 +891,7 @@ export default abstract class Router<R extends BaseRoute> {
     }
   }
 
-  private notifyExistingHandlers(
-    newState: TransitionState<R>,
-    newTransition: InternalTransition<R>
-  ) {
+  private notifyExistingHandlers(newState: TransitionState, newTransition: InternalTransition) {
     let oldRouteInfos = this.state!.routeInfos,
       changing = [],
       i,
@@ -928,7 +925,7 @@ export default abstract class Router<R extends BaseRoute> {
   */
   reset() {
     if (this.state) {
-      forEach<InternalRouteInfo<R>>(this.state.routeInfos.slice().reverse(), function (routeInfo) {
+      forEach<InternalRouteInfo>(this.state.routeInfos.slice().reverse(), function (routeInfo) {
         let { manager, bucket } = routeInfo;
         if (manager !== undefined && bucket !== undefined) {
           manager.exit(bucket);
@@ -985,7 +982,7 @@ export default abstract class Router<R extends BaseRoute> {
     return this.doTransition(name, args, true);
   }
 
-  refresh(pivot?: R | string) {
+  refresh(pivot?: object | string) {
     let previousTransition = this.activeTransition;
     let state = previousTransition ? previousTransition[STATE_SYMBOL] : this.state;
     let routeInfos = state!.routeInfos;
@@ -1041,7 +1038,7 @@ export default abstract class Router<R extends BaseRoute> {
 
     @return {String} a URL
   */
-  generate(routeName: string, ...args: ModelsAndQueryParams<ModelFor<R>>) {
+  generate(routeName: string, ...args: ModelsAndQueryParams<unknown>) {
     let partitionedArgs = extractQueryParams(args),
       suppliedParams = partitionedArgs[0],
       queryParams = partitionedArgs[1];
@@ -1062,7 +1059,7 @@ export default abstract class Router<R extends BaseRoute> {
     return this.recognizer.generate(routeName, params);
   }
 
-  applyIntent(routeName: string, contexts: ModelFor<R>[]): TransitionState<R> {
+  applyIntent(routeName: string, contexts: unknown[]): TransitionState {
     let intent = new NamedTransitionIntent(this, routeName, undefined, contexts);
 
     let state = (this.activeTransition && this.activeTransition[STATE_SYMBOL]) || this.state!;
@@ -1072,9 +1069,9 @@ export default abstract class Router<R extends BaseRoute> {
 
   isActiveIntent(
     routeName: string,
-    contexts: ModelFor<R>[],
+    contexts: unknown[],
     queryParams?: Dict<unknown> | null,
-    _state?: TransitionState<R>
+    _state?: TransitionState
   ) {
     let state = _state || this.state!,
       targetRouteInfos = state.routeInfos,
@@ -1101,7 +1098,7 @@ export default abstract class Router<R extends BaseRoute> {
       return false;
     }
 
-    let testState = new TransitionState<R>();
+    let testState = new TransitionState();
     testState.routeInfos = targetRouteInfos.slice(0, index + 1);
     recognizerHandlers = recognizerHandlers.slice(0, index + 1);
 
@@ -1128,7 +1125,7 @@ export default abstract class Router<R extends BaseRoute> {
     return routesEqual && !getChangelist(activeQPsOnNewHandler, queryParams);
   }
 
-  isActive(routeName: string, ...args: ModelsAndQueryParams<ModelFor<R>>) {
+  isActive(routeName: string, ...args: ModelsAndQueryParams<unknown>) {
     let [contexts, queryParams] = extractQueryParams(args);
     return this.isActiveIntent(routeName, contexts, queryParams);
   }
@@ -1138,26 +1135,23 @@ export default abstract class Router<R extends BaseRoute> {
   }
 }
 
-function routeInfosEqual<R1 extends BaseRoute, R2 extends BaseRoute>(
-  routeInfos: InternalRouteInfo<R1>[],
-  otherRouteInfos: InternalRouteInfo<R2>[]
-) {
+function routeInfosEqual(routeInfos: InternalRouteInfo[], otherRouteInfos: InternalRouteInfo[]) {
   if (routeInfos.length !== otherRouteInfos.length) {
     return false;
   }
 
   for (let i = 0, len = routeInfos.length; i < len; ++i) {
     // SAFETY: Just casting for comparison
-    if (routeInfos[i] !== (otherRouteInfos[i] as unknown as InternalRouteInfo<R1>)) {
+    if (routeInfos[i] !== (otherRouteInfos[i] as unknown as InternalRouteInfo)) {
       return false;
     }
   }
   return true;
 }
 
-function routeInfosSameExceptQueryParams<R1 extends BaseRoute, R2 extends BaseRoute>(
-  routeInfos: InternalRouteInfo<R1>[],
-  otherRouteInfos: InternalRouteInfo<R2>[]
+function routeInfosSameExceptQueryParams(
+  routeInfos: InternalRouteInfo[],
+  otherRouteInfos: InternalRouteInfo[]
 ) {
   if (routeInfos.length !== otherRouteInfos.length) {
     return false;
@@ -1204,10 +1198,10 @@ function paramsEqual(params: Dict<unknown> | undefined, otherParams: Dict<unknow
   return true;
 }
 
-export interface RoutePartition<R extends BaseRoute> {
-  updatedContext: InternalRouteInfo<R>[];
-  exited: InternalRouteInfo<R>[];
-  entered: InternalRouteInfo<R>[];
-  unchanged: InternalRouteInfo<R>[];
-  reset: InternalRouteInfo<R>[];
+export interface RoutePartition {
+  updatedContext: InternalRouteInfo[];
+  exited: InternalRouteInfo[];
+  entered: InternalRouteInfo[];
+  unchanged: InternalRouteInfo[];
+  reset: InternalRouteInfo[];
 }

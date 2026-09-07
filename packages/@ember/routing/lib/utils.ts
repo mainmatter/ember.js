@@ -3,14 +3,13 @@ import { getOwner } from '@ember/-internals/owner';
 import type { ControllerQueryParam, ControllerQueryParamType } from '@ember/controller';
 import { assert } from '@ember/debug';
 import EngineInstance from '@ember/engine/instance';
-import type { BaseRoute, InternalRouteInfo } from 'router_js';
+import type { InternalRouteInfo } from 'router_js';
 import type Router from 'router_js';
 import { STATE_SYMBOL } from 'router_js';
 import type { ExtendedInternalRouteInfo } from '@ember/routing/route';
 import type Route from '@ember/routing/route';
 import type EmberRouter from '@ember/routing/router';
 import { hasClassicInterop } from '@ember/-internals/routing/route-managers/api';
-import type { BaseRoute as IRoute } from 'router_js';
 
 const ALL_PERIODS_REGEX = /\./g;
 
@@ -67,7 +66,7 @@ export function extractRouteArgs(args: RouteArgs): ExtractedArgs {
   return { routeName, models, queryParams };
 }
 
-export function getActiveTargetName(router: Router<BaseRoute>): string {
+export function getActiveTargetName(router: Router): string {
   let routeInfos = router.activeTransition
     ? router.activeTransition[STATE_SYMBOL]!.routeInfos
     : router.state!.routeInfos;
@@ -78,7 +77,7 @@ export function getActiveTargetName(router: Router<BaseRoute>): string {
 
 export function stashParamNames(
   router: EmberRouter,
-  routeInfos: Array<ExtendedInternalRouteInfo<Route>> & { _namesStashed?: boolean }
+  routeInfos: Array<ExtendedInternalRouteInfo> & { _namesStashed?: boolean }
 ): void {
   if (routeInfos['_namesStashed']) {
     return;
@@ -92,7 +91,7 @@ export function stashParamNames(
   assert('has route info', routeInfo);
   let targetRouteName = routeInfo.name;
   let recogHandlers = router._routerMicrolib.recognizer.handlersFor(targetRouteName);
-  let dynamicParent: InternalRouteInfo<Route>;
+  let dynamicParent: InternalRouteInfo;
 
   for (let i = 0; i < routeInfos.length; ++i) {
     let routeInfo = routeInfos[i];
@@ -111,8 +110,8 @@ export function stashParamNames(
     if (manager !== undefined && bucket !== undefined && hasClassicInterop(manager)) {
       manager.stashNames(
         bucket,
-        routeInfo as unknown as InternalRouteInfo<IRoute>,
-        dynamicParent! as unknown as InternalRouteInfo<IRoute>
+        routeInfo as unknown as InternalRouteInfo,
+        dynamicParent! as unknown as InternalRouteInfo
       );
     }
   }

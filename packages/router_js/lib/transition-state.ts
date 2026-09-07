@@ -1,6 +1,6 @@
 import { Promise } from 'rsvp';
 import type { Dict } from './core';
-import type { BaseRoute, ResolvedRouteInfo, RouteInfo } from './route-info';
+import type { ResolvedRouteInfo, RouteInfo } from './route-info';
 import type InternalRouteInfo from './route-info';
 import type Transition from './transition';
 import { forEach, promiseLabel } from './utils';
@@ -11,11 +11,7 @@ interface IParams {
   [key: string]: unknown;
 }
 
-function handleError<R extends BaseRoute>(
-  currentState: TransitionState<R>,
-  transition: Transition<R>,
-  error: Error
-): never {
+function handleError(currentState: TransitionState, transition: Transition, error: Error): never {
   // This is the only possible
   // reject value of TransitionState#resolve
   let routeInfos = currentState.routeInfos;
@@ -32,9 +28,9 @@ function handleError<R extends BaseRoute>(
   );
 }
 
-function resolveOneRouteInfo<R extends BaseRoute>(
-  currentState: TransitionState<R>,
-  transition: Transition<R>
+function resolveOneRouteInfo(
+  currentState: TransitionState,
+  transition: Transition
 ): void | Promise<void> {
   if (transition.resolveIndex === currentState.routeInfos.length) {
     // This is is the only possible
@@ -45,16 +41,16 @@ function resolveOneRouteInfo<R extends BaseRoute>(
   let routeInfo = currentState.routeInfos[transition.resolveIndex]!;
 
   let callback = proceed.bind(null, currentState, transition) as (
-    resolvedRouteInfo: ResolvedRouteInfo<R>
+    resolvedRouteInfo: ResolvedRouteInfo
   ) => void | Promise<void>;
 
   return routeInfo.resolve(transition).then(callback, null, currentState.promiseLabel('Proceed'));
 }
 
-function proceed<R extends BaseRoute>(
-  currentState: TransitionState<R>,
-  transition: Transition<R>,
-  resolvedRouteInfo: ResolvedRouteInfo<R>
+function proceed(
+  currentState: TransitionState,
+  transition: Transition,
+  resolvedRouteInfo: ResolvedRouteInfo
 ): void | Promise<void> {
   let wasAlreadyResolved = currentState.routeInfos[transition.resolveIndex]!.isResolved;
   const routeIndex = transition.resolveIndex;
@@ -87,8 +83,8 @@ function proceed<R extends BaseRoute>(
   return resolveOneRouteInfo(currentState, transition);
 }
 
-export default class TransitionState<R extends BaseRoute> {
-  routeInfos: InternalRouteInfo<R>[] = [];
+export default class TransitionState {
+  routeInfos: InternalRouteInfo[] = [];
   queryParams: Dict<unknown> = {};
   params: IParams = {};
 
@@ -104,7 +100,7 @@ export default class TransitionState<R extends BaseRoute> {
     return promiseLabel("'" + targetName + "': " + label);
   }
 
-  resolve(transition: Transition<R>): Promise<TransitionState<R>> {
+  resolve(transition: Transition): Promise<TransitionState> {
     // First, calculate params for this state. This is useful
     // information to provide to the various route hooks.
     let params = this.params;
@@ -132,8 +128,8 @@ export default class TransitionState<R extends BaseRoute> {
 export class TransitionError {
   constructor(
     public error: Error,
-    public route: BaseRoute,
+    public route: object,
     public wasAborted: boolean,
-    public state: TransitionState<any>
+    public state: TransitionState
   ) {}
 }

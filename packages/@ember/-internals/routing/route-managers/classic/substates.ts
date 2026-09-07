@@ -19,7 +19,7 @@ import { hasClassicInterop, STATE_SYMBOL } from 'router_js';
 
 // Substates are classic only. A classic route has a `foo.loading`
 // sibling, and only it carries the owner and names the lookup needs.
-function classicRouteFor(routeInfo: InternalRouteInfo<Route>): Route | undefined {
+function classicRouteFor(routeInfo: InternalRouteInfo): Route | undefined {
   const { manager, bucket } = routeInfo;
 
   if (manager === undefined || bucket === undefined || !hasClassicInterop(manager)) {
@@ -33,7 +33,7 @@ export type ActiveTransition = {
   isActive: boolean;
   pivotBucket?: unknown;
   trigger?(ignoreFailure: boolean, name: string, ...args: unknown[]): void;
-  [STATE_SYMBOL]?: { routeInfos: InternalRouteInfo<Route>[] };
+  [STATE_SYMBOL]?: { routeInfos: InternalRouteInfo[] };
 };
 
 /**

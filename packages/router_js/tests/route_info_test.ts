@@ -166,7 +166,7 @@ QUnit.test('UnresolvedRouteInfoByObject does NOT get its model hook called', fun
 
   assert.expect(1);
 
-  class TestRouteInfo extends UnresolvedRouteInfoByObject<ClassicRoute<Dorkleton>> {
+  class TestRouteInfo extends UnresolvedRouteInfoByObject {
     __routeHandler?: ClassicRoute<Dorkleton>;
     get route(): ClassicRoute<Dorkleton> {
       if (this.__routeHandler) {
@@ -191,7 +191,7 @@ QUnit.test('UnresolvedRouteInfoByObject does NOT get its model hook called', fun
   );
 
   routeInfo.resolve({} as Transition).then((resolvedRouteInfo) => {
-    assert.equal(resolvedRouteInfo.context!.name, 'dorkletons');
+    assert.equal((resolvedRouteInfo.context as { name: string }).name, 'dorkletons');
   });
 });
 
@@ -273,7 +273,7 @@ QUnit.test(
     let handler = createNonGatingHandler('async-parent', () => enterPromise);
     let routeInfo = new UnresolvedRouteInfoByParam(router, 'async-parent', [], {}, handler);
 
-    let transition = { isAborted: false } as unknown as InternalTransition<ClassicRoute>;
+    let transition = { isAborted: false } as unknown as InternalTransition;
 
     let settled = false;
     let pending = routeInfo.resolve(transition).then((resolvedRouteInfo) => {
@@ -317,7 +317,7 @@ QUnit.test('route resolution waits for getInvokable', async function (assert) {
     isAborted: false,
     router,
     resolvedModels: {},
-  } as unknown as InternalTransition<ClassicRoute>;
+  } as unknown as InternalTransition;
 
   let settled = false;
   let pending = routeInfo.resolve(transition).then((resolvedRouteInfo) => {
@@ -358,7 +358,7 @@ QUnit.test('getAncestorPromise resolves with the ancestor enter result', async f
   });
   let childInfo = new UnresolvedRouteInfoByParam(router, 'parent.child', [], {}, handler);
 
-  let transition = { isAborted: false } as unknown as InternalTransition<ClassicRoute>;
+  let transition = { isAborted: false } as unknown as InternalTransition;
   // Seed the transition state so getAncestorPromise can find the ancestor.
   transition[STATE_SYMBOL] = { routeInfos: [ancestorInfo] } as never;
 
@@ -380,7 +380,7 @@ QUnit.test(
 
     assert.false('context' in routeInfo, 'a fresh by-param route info has no own context');
 
-    let transition = { isAborted: false } as unknown as InternalTransition<ClassicRoute>;
+    let transition = { isAborted: false } as unknown as InternalTransition;
     let resolved = await routeInfo.resolve(transition);
     await resolve();
 
@@ -421,7 +421,7 @@ QUnit.test('getAncestorPromise only matches true ancestors', async function (ass
   });
   let childInfo = new UnresolvedRouteInfoByParam(router, 'parent.child', [], {}, handler);
 
-  let transition = { isAborted: false } as unknown as InternalTransition<ClassicRoute>;
+  let transition = { isAborted: false } as unknown as InternalTransition;
   // Seed the transition state with the child itself in place, so the walk
   // can distinguish ancestors from descendants.
   transition[STATE_SYMBOL] = { routeInfos: [ancestorInfo, childInfo, descendantInfo] } as never;

@@ -1,4 +1,3 @@
-import type { BaseRoute } from '../index';
 import type { Dict } from '../lib/core';
 import { Promise } from 'rsvp';
 import { createHandler, TestRouter } from './test_helpers';
@@ -16,7 +15,7 @@ function map(router: TestRouter) {
 // Intentionally use QUnit.module instead of module from test_helpers
 // so that we avoid using Backburner to handle the async portions of
 // the test suite
-let routes: Dict<BaseRoute>;
+let routes: Dict<object>;
 let router: TestRouter;
 QUnit.module('Async Get Handler', {
   beforeEach: function () {

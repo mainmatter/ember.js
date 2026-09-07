@@ -11,7 +11,7 @@
   `@ember/routing`.
 */
 
-import type { RouteInfo, BaseRoute } from './route-info';
+import type { RouteInfo } from './route-info';
 import type { default as InternalRouteInfo } from './route-info';
 import type { PublicTransition as Transition } from './transition';
 
@@ -187,7 +187,7 @@ export interface AsyncNavigationState {
  */
 export interface ClassicInteropArgs {
   transition: Transition;
-  internalRouteInfo: InternalRouteInfo<BaseRoute>;
+  internalRouteInfo: InternalRouteInfo;
 }
 
 // -- Hook argument shapes -----------------------------------------------------
@@ -394,11 +394,7 @@ export interface RouteManagerWithClassicInterop<
     `model`-scoped query params resolve to the right path. Called by the
     router while walking the active route hierarchy.
    */
-  stashNames(
-    bucket: Bucket,
-    routeInfo: InternalRouteInfo<BaseRoute>,
-    dynamicParent: InternalRouteInfo<BaseRoute>
-  ): void;
+  stashNames(bucket: Bucket, routeInfo: InternalRouteInfo, dynamicParent: InternalRouteInfo): void;
 
   /**
     Serializes a single query-param value for the URL. Mirrors the classic
@@ -428,7 +424,7 @@ export interface RouteManagerWithClassicInterop<
    */
   serializeContext(
     bucket: Bucket,
-    routeInfo: InternalRouteInfo<BaseRoute>,
+    routeInfo: InternalRouteInfo,
     value: unknown
   ): Record<string, unknown> | undefined;
 

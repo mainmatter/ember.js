@@ -38,14 +38,13 @@ import {
   type default as Route,
   type QueryParam,
   type QueryParamMeta,
+  type ModelFor,
   defaultSerialize,
   getFullQueryParams,
   hasDefaultSerialize,
 } from '@ember/routing/route';
 import type {
-  BaseRoute,
   InternalRouteInfo,
-  ModelFor,
   RouteInfo,
   RouteInfoWithAttributes,
   Transition,
@@ -81,7 +80,7 @@ import {
 @module @ember/routing/router
 */
 
-function defaultDidTransition(this: EmberRouter, infos: InternalRouteInfo<Route>[]) {
+function defaultDidTransition(this: EmberRouter, infos: InternalRouteInfo[]) {
   updatePaths(this);
 
   this.notifyPropertyChange('url');
@@ -98,8 +97,8 @@ function defaultDidTransition(this: EmberRouter, infos: InternalRouteInfo<Route>
 
 function defaultWillTransition(
   this: EmberRouter,
-  oldInfos: InternalRouteInfo<Route>[],
-  newInfos: InternalRouteInfo<Route>[]
+  oldInfos: InternalRouteInfo[],
+  newInfos: InternalRouteInfo[]
 ) {
   if (DEBUG) {
     // @ts-expect-error namespace isn't public
@@ -132,7 +131,7 @@ if (DEBUG) {
 // published deep-import path.
 export type { QueryParam };
 
-function K(this: Router<Route>) {
+function K(this: Router) {
   return this;
 }
 
@@ -186,7 +185,7 @@ class EmberRouter extends EmberObject {
   // Set with reopen to allow overriding via extend
   declare location: (keyof LocationRegistry & string) | EmberLocation;
 
-  _routerMicrolib!: Router<BaseRoute>;
+  _routerMicrolib!: Router;
   _didSetupRouter = false;
   _initialTransitionStarted = false;
 
@@ -317,7 +316,7 @@ class EmberRouter extends EmberObject {
     return this;
   }
 
-  static _routePath(routeInfos: InternalRouteInfo<BaseRoute>[]) {
+  static _routePath(routeInfos: InternalRouteInfo[]) {
     let path: string[] = [];
 
     // We have to handle coalescing resource names that
@@ -499,7 +498,7 @@ class EmberRouter extends EmberObject {
     const owner = getOwner(this);
     assert('Router is unexpectedly missing an owner', owner);
 
-    class PrivateRouter extends Router<BaseRoute> {
+    class PrivateRouter extends Router {
       getRoute(name: string) {
         // All route instantiation, manager dispatch, and engine-owner
         // resolution lives on EmberRouter.getRoute. This wrapper just
@@ -510,7 +509,7 @@ class EmberRouter extends EmberObject {
         // one boundary where they enter router_js's generic machinery. All
         // manager/bucket dispatch goes through the routeInfo association, so
         // nothing downstream depends on the route's actual shape.
-        return route as BaseRoute;
+        return route as object;
       }
 
       isRouteInaccessibleByURL(name: string) {
@@ -536,7 +535,7 @@ class EmberRouter extends EmberObject {
       }
 
       // TODO: merge into routeDidChange
-      didTransition(infos: InternalRouteInfo<Route>[]) {
+      didTransition(infos: InternalRouteInfo[]) {
         assert(
           'You attempted to override the "didTransition" method which has been deprecated. Please inject the router service and listen to the "routeDidChange" event.',
           router.didTransition === defaultDidTransition
@@ -545,7 +544,7 @@ class EmberRouter extends EmberObject {
       }
 
       // TODO: merge into routeWillChange
-      willTransition(oldInfos: InternalRouteInfo<Route>[], newInfos: InternalRouteInfo<Route>[]) {
+      willTransition(oldInfos: InternalRouteInfo[], newInfos: InternalRouteInfo[]) {
         assert(
           'You attempted to override the "willTransition" method which has been deprecated. Please inject the router service and listen to the "routeWillChange" event.',
           router.willTransition === defaultWillTransition
@@ -554,7 +553,7 @@ class EmberRouter extends EmberObject {
       }
 
       triggerEvent<N extends MethodNamesOf<typeof defaultActionHandlers>>(
-        routeInfos: InternalRouteInfo<Route>[],
+        routeInfos: InternalRouteInfo[],
         ignoreFailure: boolean,
         name: N,
         args: OmitFirst<Parameters<(typeof defaultActionHandlers)[N]>>
@@ -1110,7 +1109,7 @@ class EmberRouter extends EmberObject {
     @return {Void}
   */
   _serializeQueryParams(
-    routeInfos: InternalRouteInfo<BaseRoute>[],
+    routeInfos: InternalRouteInfo[],
     queryParams: Record<string, unknown>
   ): asserts queryParams is Record<string, string | null | undefined> {
     forEachQueryParam(
@@ -1167,10 +1166,7 @@ class EmberRouter extends EmberObject {
     @param {Object} queryParams
     @return {Void}
   */
-  _deserializeQueryParams(
-    routeInfos: InternalRouteInfo<BaseRoute>[],
-    queryParams: Record<string, unknown>
-  ) {
+  _deserializeQueryParams(routeInfos: InternalRouteInfo[], queryParams: Record<string, unknown>) {
     forEachQueryParam(
       this,
       routeInfos,
@@ -1228,7 +1224,7 @@ class EmberRouter extends EmberObject {
     @return {Void}
   */
   _pruneDefaultQueryParamValues(
-    routeInfos: InternalRouteInfo<BaseRoute>[],
+    routeInfos: InternalRouteInfo[],
     queryParams: Record<string, string | null | undefined>
   ) {
     let qps = this._queryParamsFor(routeInfos);
@@ -1335,7 +1331,7 @@ class EmberRouter extends EmberObject {
     @param {RouteInfo} routeInfo
     @return {Object}
   */
-  _getQPMeta(routeInfo: InternalRouteInfo<BaseRoute>) {
+  _getQPMeta(routeInfo: InternalRouteInfo) {
     let { manager, bucket } = routeInfo;
     if (manager === undefined || bucket === undefined || !hasClassicInterop(manager)) {
       return undefined;
@@ -1354,7 +1350,7 @@ class EmberRouter extends EmberObject {
     @param {Array<RouteInfo>} routeInfos
     @return {Object}
    */
-  _queryParamsFor(routeInfos: InternalRouteInfo<BaseRoute>[]) {
+  _queryParamsFor(routeInfos: InternalRouteInfo[]) {
     let routeInfoLength = routeInfos.length;
     let leafRouteName = routeInfos[routeInfoLength - 1]!.name;
     let cached = this._qpCache[leafRouteName];
@@ -1461,7 +1457,7 @@ class EmberRouter extends EmberObject {
     @return {Void}
   */
   _hydrateUnsuppliedQueryParams(
-    state: TransitionState<BaseRoute>,
+    state: TransitionState,
     queryParams: QueryParams,
     _fromRouterService: boolean
   ): void {
@@ -1669,7 +1665,7 @@ let defaultActionHandlers = {
   // Attempt to find an appropriate loading route or substate to enter. Like
   // `error` below, this only forwards through the classic-interop contract;
   // the manager owns substate entry.
-  loading(this: EmberRouter, routeInfos: InternalRouteInfo<Route>[], transition: Transition) {
+  loading(this: EmberRouter, routeInfos: InternalRouteInfo[], transition: Transition) {
     let originRoute = routeInfos[routeInfos.length - 1]?.route;
     let dispatch = dispatchRouteInfoFor(routeInfos);
     let manager = dispatch?.manager;
@@ -1681,12 +1677,7 @@ let defaultActionHandlers = {
   },
 
   // Attempt to find an appropriate error route or substate to enter.
-  error(
-    this: EmberRouter,
-    routeInfos: InternalRouteInfo<Route>[],
-    error: Error,
-    transition: Transition
-  ) {
+  error(this: EmberRouter, routeInfos: InternalRouteInfo[], error: Error, transition: Transition) {
     // Error substates are classic machinery; the router only forwards the
     // unhandled error through the classic-interop contract. The event's
     // routeInfos are sliced to end at the route that errored, so its leaf
@@ -1710,8 +1701,8 @@ let defaultActionHandlers = {
 };
 
 function dispatchRouteInfoFor(
-  routeInfos: InternalRouteInfo<Route>[] | undefined
-): InternalRouteInfo<Route> | undefined {
+  routeInfos: InternalRouteInfo[] | undefined
+): InternalRouteInfo | undefined {
   if (routeInfos === undefined) {
     return undefined;
   }
@@ -1755,7 +1746,7 @@ function logError(_error: any, initialMessage: string) {
 
 export function triggerEvent<N extends MethodNamesOf<typeof defaultActionHandlers>>(
   this: EmberRouter,
-  routeInfos: InternalRouteInfo<Route>[],
+  routeInfos: InternalRouteInfo[],
   ignoreFailure: boolean,
   name: N,
   args: OmitFirst<Parameters<(typeof defaultActionHandlers)[N]>>
@@ -1776,7 +1767,7 @@ export function triggerEvent<N extends MethodNamesOf<typeof defaultActionHandler
   for (let i = routeInfos.length - 1; i >= 0; i--) {
     routeInfo = routeInfos[i];
     assert('[BUG] Missing routeInfo', routeInfo);
-    handler = routeInfo.route;
+    handler = routeInfo.route as Route | undefined;
     actionHandler = handler && handler.actions && handler.actions[name];
     if (actionHandler) {
       if (actionHandler.apply(handler, args) === true) {
@@ -1862,7 +1853,7 @@ function didBeginTransition(transition: Transition, router: EmberRouter) {
 
 function forEachQueryParam(
   router: EmberRouter,
-  routeInfos: InternalRouteInfo<BaseRoute>[],
+  routeInfos: InternalRouteInfo[],
   queryParams: Record<string, unknown>,
   callback: (key: string, value: unknown, qp: QueryParam | undefined) => void
 ) {

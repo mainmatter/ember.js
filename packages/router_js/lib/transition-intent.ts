@@ -1,16 +1,15 @@
-import type { BaseRoute } from './route-info';
 import type Router from './router';
 import type TransitionState from './transition-state';
 
-export type OpaqueIntent = TransitionIntent<any>;
+export type OpaqueIntent = TransitionIntent;
 
-export abstract class TransitionIntent<R extends BaseRoute> {
+export abstract class TransitionIntent {
   data: object;
-  router: Router<R>;
-  constructor(router: Router<R>, data: object = {}) {
+  router: Router;
+  constructor(router: Router, data: object = {}) {
     this.router = router;
     this.data = data;
   }
-  preTransitionState?: TransitionState<R>;
-  abstract applyToState(oldState: TransitionState<R>, isIntermediate: boolean): TransitionState<R>;
+  preTransitionState?: TransitionState;
+  abstract applyToState(oldState: TransitionState, isIntermediate: boolean): TransitionState;
 }

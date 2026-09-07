@@ -36,13 +36,7 @@ import { once } from '@ember/runloop';
 import { setRouteManager } from '@ember/-internals/routing/route-managers/registry';
 import { ClassicRouteManager } from '@ember/-internals/routing/route-managers/classic/manager';
 import { hasClassicInterop } from '@ember/-internals/routing/route-managers/api';
-import type {
-  BaseRoute,
-  InternalRouteInfo,
-  BaseRoute as IRoute,
-  Transition,
-  TransitionState,
-} from 'router_js';
+import type { InternalRouteInfo, Transition, TransitionState } from 'router_js';
 import { getRouteManagement, PARAMS_SYMBOL, STATE_SYMBOL } from 'router_js';
 import type { default as EmberRouter } from '@ember/routing/router';
 import { default as generateController } from './lib/generate_controller';
@@ -54,9 +48,11 @@ import {
   stashParamNames,
 } from './lib/utils';
 
-export interface ExtendedInternalRouteInfo<R extends Route> extends InternalRouteInfo<R> {
+export interface ExtendedInternalRouteInfo extends InternalRouteInfo {
   _names?: unknown[];
 }
+
+export type ModelFor<R> = R extends Route<infer M> ? M : never;
 
 export interface QueryParam {
   prop: string;
@@ -86,7 +82,7 @@ export type QueryParamMeta = {
   };
 };
 
-type RouteTransitionState = TransitionState<BaseRoute> & {
+type RouteTransitionState = TransitionState & {
   fullQueryParams?: Record<string, unknown>;
   queryParamsFor?: Record<string, Record<string, unknown>>;
 };
@@ -109,7 +105,8 @@ type MaybeReturnType<T> = T extends AnyFn ? ReturnType<T> : unknown;
   @since 1.0.0
   @public
 */
-interface Route<Model = unknown> extends IRoute<Model>, ActionHandler {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+interface Route<Model = unknown> extends ActionHandler {
   /**
     The `willTransition` action is fired at the beginning of any
     attempted transition with a `Transition` object as the sole
@@ -283,7 +280,7 @@ interface Route<Model = unknown> extends IRoute<Model>, ActionHandler {
   error?(error: Error, transition: Transition): boolean | void;
 }
 
-class Route<Model = unknown> extends EmberObject.extend(ActionHandler) implements IRoute {
+class Route<Model = unknown> extends EmberObject.extend(ActionHandler) {
   static {
     // The deprecated Evented mixin is no longer applied, but instances still
     // provide its methods, so `Evented.detect` must keep returning true.
@@ -292,10 +289,6 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler) implement
 
   static isRouteFactory = true;
 
-  // These properties will end up appearing in the public interface because we
-  // `implements IRoute` from `router.js`, which has them as part of *its*
-  // public contract. We mark them as `@internal` so they at least signal to
-  // people subclassing `Route` that they should not use them.
   /** @internal */
   context = {} as Model;
   /** @internal */
@@ -575,10 +568,7 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler) implement
 
     @method _stashNames
   */
-  _stashNames(
-    routeInfo: ExtendedInternalRouteInfo<this>,
-    dynamicParent: ExtendedInternalRouteInfo<this>
-  ) {
+  _stashNames(routeInfo: ExtendedInternalRouteInfo, dynamicParent: ExtendedInternalRouteInfo) {
     if (this._names) {
       return;
     }

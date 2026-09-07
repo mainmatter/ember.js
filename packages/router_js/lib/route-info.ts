@@ -20,14 +20,9 @@ export type IModel = {} & {
   id?: string | number;
 };
 
-export type ModelFor<T> = T extends BaseRoute<infer V> ? V : never;
-
-export interface BaseRoute<T = unknown> {
-  context: T | undefined;
-}
-
 // used by old router_js tests that expect to be working with the classic ember routes
-export interface ClassicRoute<T = unknown> extends BaseRoute<T> {
+export interface ClassicRoute<T = unknown> {
+  context?: T | undefined;
   routeName: string;
   inaccessibleByURL?: boolean;
   events?: Dict<(...args: unknown[]) => unknown>;
@@ -64,12 +59,12 @@ export interface RouteInfoWithAttributes extends RouteInfo {
   attributes: any;
 }
 
-type RouteInfosKey = InternalRouteInfo<BaseRoute>;
+type RouteInfosKey = InternalRouteInfo;
 
 let ROUTE_INFOS = new WeakMap<RouteInfosKey, RouteInfo | RouteInfoWithAttributes>();
 
-export function toReadOnlyRouteInfo<R extends BaseRoute>(
-  routeInfos: InternalRouteInfo<R>[],
+export function toReadOnlyRouteInfo(
+  routeInfos: InternalRouteInfo[],
   queryParams: Dict<unknown> = {},
   options: {
     includeAttributes?: boolean;
@@ -202,7 +197,7 @@ function createRouteInfoWithAttributes(
   return Object.assign(routeInfo, attributes);
 }
 
-function buildRouteInfoMetadata(info: InternalRouteInfo<BaseRoute>) {
+function buildRouteInfoMetadata(info: InternalRouteInfo) {
   let { manager, bucket } = info;
   if (manager !== undefined && hasClassicInterop(manager) && bucket !== undefined) {
     return manager.getRouteInfoMetadata(bucket);
@@ -211,7 +206,7 @@ function buildRouteInfoMetadata(info: InternalRouteInfo<BaseRoute>) {
   return null;
 }
 
-function attachMetadata(info: InternalRouteInfo<BaseRoute>, routeInfo: RouteInfo) {
+function attachMetadata(info: InternalRouteInfo, routeInfo: RouteInfo) {
   let metadata = {
     get metadata() {
       return buildRouteInfoMetadata(info);
@@ -225,22 +220,22 @@ function attachMetadata(info: InternalRouteInfo<BaseRoute>, routeInfo: RouteInfo
   return Object.assign(routeInfo, metadata);
 }
 
-export default class InternalRouteInfo<R extends BaseRoute> {
-  private _routePromise?: Promise<R> = undefined;
-  private _route?: Option<R> = null;
+export default class InternalRouteInfo {
+  private _routePromise?: Promise<object> = undefined;
+  private _route?: Option<object> = null;
   private _management?: RouteManagement = undefined;
-  protected router: Router<R>;
+  protected router: Router;
   declare paramNames: string[];
   declare name: string;
   params: Dict<unknown> | undefined = {};
   declare queryParams?: Dict<unknown>;
-  declare context?: ModelFor<R> | PromiseLike<ModelFor<R>> | undefined;
+  declare context?: unknown | PromiseLike<unknown> | undefined;
   isResolved = false;
   enterPromise?: globalThis.Promise<unknown> = undefined;
   private beginPromise?: Promise<unknown> = undefined;
-  private beginTransition?: InternalTransition<R> = undefined;
+  private beginTransition?: InternalTransition = undefined;
 
-  constructor(router: Router<R>, name: string, paramNames: string[], route?: R) {
+  constructor(router: Router, name: string, paramNames: string[], route?: object) {
     this.name = name;
     this.paramNames = paramNames;
     this.router = router;
@@ -249,15 +244,15 @@ export default class InternalRouteInfo<R extends BaseRoute> {
     }
   }
 
-  getModel(_transition: InternalTransition<R>) {
+  getModel(_transition: InternalTransition) {
     return Promise.resolve(this.context);
   }
 
-  serialize(_context?: ModelFor<R> | null): Dict<unknown> | undefined {
+  serialize(_context?: unknown | null): Dict<unknown> | undefined {
     return this.params || {};
   }
 
-  beginEnter(transition: InternalTransition<R>, eager = false): Promise<unknown> {
+  beginEnter(transition: InternalTransition, eager = false): Promise<unknown> {
     if (eager) {
       const eagerManager = this._management?.manager;
 
@@ -284,7 +279,7 @@ export default class InternalRouteInfo<R extends BaseRoute> {
 
     this.beginTransition = transition;
     this.beginPromise = Promise.resolve(this.routePromise)
-      .then((route: R) => {
+      .then((route: object) => {
         throwIfAborted(transition);
         return route;
       })
@@ -346,18 +341,18 @@ export default class InternalRouteInfo<R extends BaseRoute> {
     return this.beginPromise;
   }
 
-  resolve(transition: InternalTransition<R>): Promise<ResolvedRouteInfo<R>> {
+  resolve(transition: InternalTransition): Promise<ResolvedRouteInfo> {
     return this.beginEnter(transition).then((enteredContext) => {
       throwIfAborted(transition);
 
-      return this.becomeResolved(transition, enteredContext as ModelFor<R> | undefined);
+      return this.becomeResolved(transition, enteredContext as unknown | undefined);
     });
   }
 
   becomeResolved(
-    transition: InternalTransition<R> | null,
-    resolvedContext: ModelFor<R> | undefined
-  ): ResolvedRouteInfo<R> {
+    transition: InternalTransition | null,
+    resolvedContext: unknown | undefined
+  ): ResolvedRouteInfo {
     let params = this.serialize(resolvedContext);
 
     if (transition) {
@@ -374,8 +369,8 @@ export default class InternalRouteInfo<R extends BaseRoute> {
     }
 
     // SAFETY: Since this is just for lookup, it should be safe
-    let cached = ROUTE_INFOS.get(this as unknown as InternalRouteInfo<BaseRoute>);
-    let resolved = new ResolvedRouteInfo<R>(
+    let cached = ROUTE_INFOS.get(this as unknown as InternalRouteInfo);
+    let resolved = new ResolvedRouteInfo(
       this.router,
       this.name,
       this.paramNames,
@@ -387,13 +382,13 @@ export default class InternalRouteInfo<R extends BaseRoute> {
 
     if (cached !== undefined) {
       // SAFETY: This is potentially a bit risker, but for what we're doing, it should be ok.
-      ROUTE_INFOS.set(resolved as unknown as InternalRouteInfo<BaseRoute>, cached);
+      ROUTE_INFOS.set(resolved as unknown as InternalRouteInfo, cached);
     }
 
     return resolved;
   }
 
-  shouldSupersede(routeInfo?: InternalRouteInfo<R>) {
+  shouldSupersede(routeInfo?: InternalRouteInfo) {
     // Prefer this newer routeInfo over `other` if:
     // 1) The other one doesn't exist
     // 2) The names don't match
@@ -412,7 +407,7 @@ export default class InternalRouteInfo<R extends BaseRoute> {
     );
   }
 
-  get route(): R | undefined {
+  get route(): object | undefined {
     // _route could be set to either a route object or undefined, so we
     // compare against null to know when it's been set
     if (this._route !== null) {
@@ -446,11 +441,11 @@ export default class InternalRouteInfo<R extends BaseRoute> {
     return this.router.isRouteInaccessibleByURL(this.name);
   }
 
-  set route(route: R | undefined) {
+  set route(route: object | undefined) {
     this._route = route;
   }
 
-  get routePromise(): Promise<R> {
+  get routePromise(): Promise<object> {
     if (this._routePromise) {
       return this._routePromise;
     }
@@ -460,25 +455,22 @@ export default class InternalRouteInfo<R extends BaseRoute> {
     return this._routePromise!;
   }
 
-  set routePromise(routePromise: Promise<R>) {
+  set routePromise(routePromise: Promise<object>) {
     this._routePromise = routePromise;
   }
 
-  protected log(transition: InternalTransition<R>, message: string) {
+  protected log(transition: InternalTransition, message: string) {
     if (transition.log) {
       transition.log(this.name + ': ' + message);
     }
   }
 
-  private updateRoute(route: R) {
+  private updateRoute(route: object) {
     this._management = getRouteManagement(route);
     return (this.route = route);
   }
 
-  private stashResolvedModel(
-    transition: InternalTransition<R>,
-    resolvedModel: ModelFor<R> | undefined
-  ) {
+  private stashResolvedModel(transition: InternalTransition, resolvedModel: unknown | undefined) {
     transition.resolvedModels = transition.resolvedModels || {};
     // SAFETY: It's unfortunate that we have to do this cast. It should be safe though.
     transition.resolvedModels[this.name] = resolvedModel;
@@ -489,7 +481,7 @@ export default class InternalRouteInfo<R extends BaseRoute> {
     return this._processRoute(route);
   }
 
-  private _processRoute(route: R | Promise<R>) {
+  private _processRoute(route: object | Promise<object>) {
     // Setup a routePromise so that we can wait for asynchronously loaded routes
     this.routePromise = Promise.resolve(route);
 
@@ -509,16 +501,16 @@ export default class InternalRouteInfo<R extends BaseRoute> {
   }
 }
 
-export class ResolvedRouteInfo<R extends BaseRoute> extends InternalRouteInfo<R> {
+export class ResolvedRouteInfo extends InternalRouteInfo {
   isResolved: boolean;
-  context: ModelFor<R> | undefined;
+  context: unknown | undefined;
   constructor(
-    router: Router<R>,
+    router: Router,
     name: string,
     paramNames: string[],
     params: Dict<unknown> | undefined,
-    route: R,
-    context?: ModelFor<R>,
+    route: object,
+    context?: unknown,
     enterPromise?: globalThis.Promise<unknown>
   ) {
     super(router, name, paramNames, route);
@@ -528,7 +520,7 @@ export class ResolvedRouteInfo<R extends BaseRoute> extends InternalRouteInfo<R>
     this.enterPromise = enterPromise;
   }
 
-  resolve(transition: InternalTransition<R>): Promise<this> {
+  resolve(transition: InternalTransition): Promise<this> {
     // A ResolvedRouteInfo just resolved with itself.
     if (transition && transition.resolvedModels) {
       transition.resolvedModels[this.name] = this.context;
@@ -537,14 +529,14 @@ export class ResolvedRouteInfo<R extends BaseRoute> extends InternalRouteInfo<R>
   }
 }
 
-export class UnresolvedRouteInfoByParam<R extends BaseRoute> extends InternalRouteInfo<R> {
+export class UnresolvedRouteInfoByParam extends InternalRouteInfo {
   params: Dict<unknown> = {};
   constructor(
-    router: Router<R>,
+    router: Router,
     name: string,
     paramNames: string[],
     params: Dict<unknown> | undefined,
-    route?: R
+    route?: object
   ) {
     super(router, name, paramNames, route);
     if (params) {
@@ -552,7 +544,7 @@ export class UnresolvedRouteInfoByParam<R extends BaseRoute> extends InternalRou
     }
   }
 
-  getModel(transition: InternalTransition<R>): Promise<ModelFor<R>> {
+  getModel(transition: InternalTransition): Promise<unknown> {
     let fullParams = this.params;
     if (transition && transition[QUERY_PARAMS_SYMBOL]) {
       fullParams = {};
@@ -560,13 +552,13 @@ export class UnresolvedRouteInfoByParam<R extends BaseRoute> extends InternalRou
       fullParams['queryParams'] = transition[QUERY_PARAMS_SYMBOL];
     }
 
-    let result: ModelFor<R> | PromiseLike<ModelFor<R>> | undefined;
+    let result: unknown | PromiseLike<unknown> | undefined;
 
     let { manager, bucket } = this;
     if (manager !== undefined && hasClassicInterop(manager) && bucket !== undefined) {
       result = manager.getContext(bucket, fullParams, transition) as
-        | ModelFor<R>
-        | PromiseLike<ModelFor<R>>
+        | unknown
+        | PromiseLike<unknown>
         | undefined;
     }
 
@@ -578,20 +570,20 @@ export class UnresolvedRouteInfoByParam<R extends BaseRoute> extends InternalRou
   }
 }
 
-export class UnresolvedRouteInfoByObject<R extends BaseRoute> extends InternalRouteInfo<R> {
-  serializer?: SerializerFunc<ModelFor<R>>;
+export class UnresolvedRouteInfoByObject extends InternalRouteInfo {
+  serializer?: SerializerFunc<unknown>;
   constructor(
-    router: Router<R>,
+    router: Router,
     name: string,
     paramNames: string[],
-    context: ModelFor<R> | PromiseLike<ModelFor<R>> | undefined
+    context: unknown | PromiseLike<unknown> | undefined
   ) {
     super(router, name, paramNames);
     this.context = context;
     this.serializer = this.router.getSerializer(name);
   }
 
-  getModel(transition: InternalTransition<R>) {
+  getModel(transition: InternalTransition) {
     if (this.router.log !== undefined) {
       this.router.log(this.name + ': resolving provided model');
     }
@@ -607,13 +599,13 @@ export class UnresolvedRouteInfoByObject<R extends BaseRoute> extends InternalRo
 
     @param {Object} model the model to be serialized for this route
   */
-  serialize(model?: ModelFor<R>): Dict<unknown> | undefined {
+  serialize(model?: unknown): Dict<unknown> | undefined {
     let { paramNames, context } = this;
 
     if (!model) {
       // SAFETY: By the time we serialize, we expect to be resolved.
       // This may not be an entirely safe assumption though no tests fail.
-      model = context as ModelFor<R>;
+      model = context as unknown;
     }
 
     let object: Dict<unknown> = {};

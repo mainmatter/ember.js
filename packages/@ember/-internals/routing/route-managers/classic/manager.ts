@@ -17,7 +17,7 @@ import { createConstRef } from '@glimmer/reference/lib/reference';
 import { CLASSIC_OUTLET } from './outlet-component';
 import { Promise as RSVPPromise } from 'rsvp';
 import { cancel, scheduleOnce } from '@ember/runloop';
-import type { InternalRouteInfo, BaseRoute as IRoute, RouteInfo, Transition } from 'router_js';
+import type { InternalRouteInfo, RouteInfo, Transition } from 'router_js';
 import { throwIfAborted } from 'router_js';
 import type Route from '@ember/routing/route';
 import type {
@@ -211,8 +211,8 @@ export class ClassicRouteManager implements RouteManagerWithClassicInterop<Class
 
   stashNames(
     bucket: ClassicRouteBucket,
-    routeInfo: InternalRouteInfo<IRoute>,
-    dynamicParent: InternalRouteInfo<IRoute>
+    routeInfo: InternalRouteInfo,
+    dynamicParent: InternalRouteInfo
   ): void {
     bucket.route._stashNames(
       routeInfo as Parameters<Route['_stashNames']>[0],
@@ -240,7 +240,7 @@ export class ClassicRouteManager implements RouteManagerWithClassicInterop<Class
 
   serializeContext(
     bucket: ClassicRouteBucket,
-    routeInfo: InternalRouteInfo<Route>,
+    routeInfo: InternalRouteInfo,
     value: unknown
   ): Record<string, unknown> | undefined {
     return bucket.route.serialize(value, routeInfo.paramNames) as

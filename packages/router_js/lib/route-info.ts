@@ -4,13 +4,7 @@ import type { Dict, Option } from './core';
 import type { SerializerFunc } from './router';
 import type Router from './router';
 import type InternalTransition from './transition';
-import {
-  isTransition,
-  PARAMS_SYMBOL,
-  type PublicTransition as Transition,
-  QUERY_PARAMS_SYMBOL,
-  STATE_SYMBOL,
-} from './transition';
+import { isTransition, PARAMS_SYMBOL, QUERY_PARAMS_SYMBOL, STATE_SYMBOL } from './transition';
 import { isParam, isPromise, merge } from './utils';
 import { throwIfAborted } from './transition-aborted-error';
 import type { EnterState, RouteManagement, RouteManager, RouteStateBucket } from './route-manager';
@@ -19,26 +13,6 @@ import { getRouteManagement, hasClassicInterop, invokableFor } from './route-man
 export type IModel = {} & {
   id?: string | number;
 };
-
-// used by old router_js tests that expect to be working with the classic ember routes
-export interface ClassicRoute<T = unknown> {
-  context?: T | undefined;
-  routeName: string;
-  inaccessibleByURL?: boolean;
-  events?: Dict<(...args: unknown[]) => unknown>;
-  model?(params: Dict<unknown>, transition: Transition): PromiseLike<T> | undefined | T;
-  deserialize?(params: Dict<unknown>, transition: Transition): T | PromiseLike<T> | undefined;
-  serialize?(model: T | undefined, params: string[]): Dict<unknown> | undefined;
-  beforeModel?(transition: Transition): PromiseLike<any> | any;
-  afterModel?(resolvedModel: T | undefined, transition: Transition): PromiseLike<any> | any;
-  setup?(context: T | undefined, transition: Transition): void;
-  enter?(transition: Transition): void;
-  exit?(transition?: Transition): void;
-  _internalReset?(wasReset: boolean, transition?: Transition): void;
-  contextDidChange?(): void;
-  redirect?(context: T | undefined, transition: Transition): void;
-  buildRouteInfoMetadata?(): unknown;
-}
 
 export interface RouteInfo {
   readonly name: string;

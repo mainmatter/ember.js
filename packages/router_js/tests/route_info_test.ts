@@ -1,6 +1,6 @@
 import type { Transition } from '../index';
 import type { Dict } from '../lib/core';
-import type { IModel, ClassicRoute } from '../lib/route-info';
+import type { IModel } from '../lib/route-info';
 import {
   ResolvedRouteInfo,
   toReadOnlyRouteInfo,
@@ -11,6 +11,7 @@ import InternalTransition, { STATE_SYMBOL } from '../lib/transition';
 import { associateRouteManagement } from '../lib/route-manager';
 import URLTransitionIntent from '../lib/transition-intent/url-transition-intent';
 import { resolve } from 'rsvp';
+import type { ClassicRoute } from './test_helpers';
 import { createHandler, createHandlerInfo, TestRouter } from './test_helpers';
 
 QUnit.module('RouteInfo');

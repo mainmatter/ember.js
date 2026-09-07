@@ -5,7 +5,6 @@ import type Router from '../index';
 import { associateRouteManagement } from '../index';
 import type { Dict, Maybe } from '../lib/core';
 import type {
-  ClassicRoute,
   IModel,
   RouteInfo as PublicRouteInfo,
   RouteInfoWithAttributes,
@@ -26,6 +25,7 @@ import {
   trigger,
   ignoreTransitionError,
 } from './test_helpers';
+import type { ClassicRoute } from './test_helpers';
 
 let router: Router;
 let url: string | undefined;

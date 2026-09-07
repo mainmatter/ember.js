@@ -1,7 +1,7 @@
 import type { RouteManager, RouteStateBucket, Transition } from '../index';
 import Router, { associateRouteManagement } from '../index';
 import type { Dict } from '../lib/core';
-import type { ClassicRoute, IModel } from '../lib/route-info';
+import type { IModel } from '../lib/route-info';
 import RouteInfo, { UnresolvedRouteInfoByParam } from '../lib/route-info';
 import type { PublicTransition } from '../lib/transition';
 import { logAbort } from '../lib/transition';
@@ -9,6 +9,25 @@ import type { TransitionError } from '../lib/transition-state';
 import type { UnrecognizedURLError } from '../lib/unrecognized-url-error';
 import { isTransitionAborted, throwIfAborted } from '../lib/transition-aborted-error';
 import { Promise } from 'rsvp';
+
+export interface ClassicRoute<T = unknown> {
+  context?: T | undefined;
+  routeName: string;
+  inaccessibleByURL?: boolean;
+  events?: Dict<(...args: unknown[]) => unknown>;
+  model?(params: Dict<unknown>, transition: Transition): PromiseLike<T> | undefined | T;
+  deserialize?(params: Dict<unknown>, transition: Transition): T | PromiseLike<T> | undefined;
+  serialize?(model: T | undefined, params: string[]): Dict<unknown> | undefined;
+  beforeModel?(transition: Transition): PromiseLike<any> | any;
+  afterModel?(resolvedModel: T | undefined, transition: Transition): PromiseLike<any> | any;
+  setup?(context: T | undefined, transition: Transition): void;
+  enter?(transition: Transition): void;
+  exit?(transition?: Transition): void;
+  _internalReset?(wasReset: boolean, transition?: Transition): void;
+  contextDidChange?(): void;
+  redirect?(context: T | undefined, transition: Transition): void;
+  buildRouteInfoMetadata?(): unknown;
+}
 
 // A useful function to allow you to ignore transition errors in a testing context
 export async function ignoreTransitionError(transition: Transition) {

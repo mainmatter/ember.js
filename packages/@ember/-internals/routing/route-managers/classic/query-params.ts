@@ -14,9 +14,9 @@ import { set } from '@ember/-internals/metal/lib/property_set';
 import { stashParamNames } from '@ember/routing/lib/utils';
 import type Route from '@ember/routing/route';
 import type { QueryParam } from '@ember/routing/router';
-import type { Transition } from 'router_js';
-import { STATE_SYMBOL } from 'router_js';
-import type { ClassicRouteBucket } from './bucket';
+import type { InternalRouteInfo, Transition } from 'router_js';
+import { hasClassicInterop, STATE_SYMBOL } from 'router_js';
+import { ClassicRouteBucket } from './bucket';
 
 // Returns a fresh native array when the value is an array so callers cannot
 // mutate the shared default. Also used by `@ember/routing/route`'s QP meta
@@ -67,6 +67,23 @@ export function queryParamsDidChange(
   return true;
 }
 
+function classicManagementFor(routeInfos: InternalRouteInfo[], qp: QueryParam) {
+  let routeInfo = routeInfos.find((candidate) => candidate.name === qp.fullRouteName);
+  let manager = routeInfo?.manager;
+  let bucket = routeInfo?.bucket;
+
+  assert(
+    `expected classic-interop manager for query param route ${qp.fullRouteName}`,
+    manager !== undefined && hasClassicInterop(manager)
+  );
+  assert(
+    'Expected a classic route bucket for a classic query param',
+    bucket instanceof ClassicRouteBucket
+  );
+
+  return { manager, bucket };
+}
+
 /**
   Classic `finalizeQueryParamChange`. Only the `application` route does the
   work: it reconciles every controller's query-param values with the URL and
@@ -99,8 +116,8 @@ export function finalizeQueryParamChange(
   stashParamNames(router, routeInfos);
 
   for (let qp of qpMeta.qps) {
-    let qpRoute = qp.route;
-    let controller = qpRoute.controller;
+    let { manager: qpManager, bucket: qpBucket } = classicManagementFor(routeInfos, qp);
+    let controller = qpBucket.route.controller;
     let presentKey = qp.urlKey in params && qp.urlKey;
 
     // Do a reverse lookup to see if the changed query
@@ -111,13 +128,16 @@ export function finalizeQueryParamChange(
     if (changes.has(qp.urlKey)) {
       // Value updated in/before setupController
       value = get(controller, qp.prop);
-      svalue = qpRoute.serializeQueryParam(value, qp.urlKey, qp.type);
+      svalue = qpManager.serializeQueryParam(qpBucket, value, qp.urlKey, qp.type) as
+        | string
+        | null
+        | undefined;
     } else {
       if (presentKey) {
         svalue = params[presentKey];
 
         if (svalue !== undefined) {
-          value = qpRoute.deserializeQueryParam(svalue, qp.urlKey, qp.type);
+          value = qpManager.deserializeQueryParam(qpBucket, svalue, qp.urlKey, qp.type);
         }
       } else {
         // No QP provided; use default value.
@@ -126,13 +146,12 @@ export function finalizeQueryParamChange(
       }
     }
 
-    // SAFETY: Since `_qp` is protected we can't infer the type
-    controller._qpDelegate = (get(qpRoute, '_qp') as Route['_qp']).states.inactive;
+    controller._qpDelegate = (qpManager.qp(qpBucket) as Route['_qp']).states.inactive;
 
     let thisQueryParamChanged = svalue !== qp.serializedValue;
     if (thisQueryParamChanged) {
       if (transition.queryParamsOnly && replaceUrl !== false) {
-        let options = qpRoute._optionsForQueryParam(qp);
+        let options = qpBucket.route._optionsForQueryParam(qp);
         let replaceConfigValue = get(options, 'replace');
         if (replaceConfigValue) {
           replaceUrl = true;
@@ -171,10 +190,9 @@ export function finalizeQueryParamChange(
   }
 
   qpMeta.qps.forEach((qp: QueryParam) => {
-    // SAFETY: Since `_qp` is protected we can't infer the type
-    let routeQpMeta = get(qp.route, '_qp') as Route['_qp'];
-    let finalizedController = qp.route.controller;
-    finalizedController['_qpDelegate'] = get(routeQpMeta, 'states.active');
+    let { manager: qpManager, bucket: qpBucket } = classicManagementFor(routeInfos, qp);
+    let routeQpMeta = qpManager.qp(qpBucket) as Route['_qp'];
+    qpBucket.route.controller['_qpDelegate'] = get(routeQpMeta, 'states.active');
   });
 
   router._qpUpdates.clear();

@@ -7,7 +7,6 @@ import { set } from '@ember/-internals/metal/lib/property_set';
 import type Owner from '@ember/owner';
 import { getOwner } from '@ember/owner';
 import { getRouteManager } from '@ember/-internals/routing/route-managers/registry';
-import { getRouteManagement } from '@ember/-internals/routing/route-managers/management';
 import type { RouteManager } from '@ember/-internals/routing/route-managers/api';
 import type { RouteManagement } from 'router_js';
 import { hasClassicInterop } from '@ember/-internals/routing/route-managers/api';
@@ -1095,17 +1094,8 @@ class EmberRouter extends EmberObject {
       (key: string, value: unknown, qp: QueryParam | undefined) => {
         if (qp) {
           delete queryParams[key];
-          let managed = getRouteManagement(qp.route);
-          assert(
-            'Expected a classic-interop route manager to serialize a query param',
-            managed !== undefined && hasClassicInterop(managed.manager)
-          );
-          queryParams[qp.urlKey] = managed.manager.serializeQueryParam(
-            managed.bucket,
-            value,
-            qp.urlKey,
-            qp.type
-          );
+          let { manager, bucket } = managementForQueryParam(this, qp);
+          queryParams[qp.urlKey] = manager.serializeQueryParam(bucket, value, qp.urlKey, qp.type);
         } else if (value === undefined) {
           return; // We don't serialize undefined values
         } else {
@@ -1152,17 +1142,8 @@ class EmberRouter extends EmberObject {
         // because all values will be treated as strings
         if (qp) {
           delete queryParams[key];
-          let managed = getRouteManagement(qp.route);
-          assert(
-            'Expected a classic-interop route manager to deserialize a query param',
-            managed !== undefined && hasClassicInterop(managed.manager)
-          );
-          queryParams[qp.prop] = managed.manager.deserializeQueryParam(
-            managed.bucket,
-            value,
-            qp.urlKey,
-            qp.type
-          );
+          let { manager, bucket } = managementForQueryParam(this, qp);
+          queryParams[qp.prop] = manager.deserializeQueryParam(bucket, value, qp.urlKey, qp.type);
         }
       }
     );
@@ -1461,7 +1442,7 @@ class EmberRouter extends EmberObject {
           (qp.urlKey in queryParams && qp.urlKey);
 
         assert(
-          `You passed the \`${presentProp}\` query parameter during a transition into ${qp.route.routeName}, please update to ${qp.urlKey}`,
+          `You passed the \`${presentProp}\` query parameter during a transition into ${qp.fullRouteName}, please update to ${qp.urlKey}`,
           (function () {
             if (qp.urlKey === presentProp || qp.scopedPropertyName === presentProp) {
               return true;
@@ -1484,7 +1465,7 @@ class EmberRouter extends EmberObject {
             delete queryParams[presentProp];
           }
         } else {
-          let cacheKey = calculateCacheKey(qp.route.fullRouteName, qp.parts, state.params);
+          let cacheKey = calculateCacheKey(qp.fullRouteName, qp.parts, state.params);
 
           assert(
             'ROUTER BUG: expected appCache to be defined. This is an internal bug, please open an issue on Github if you see this message!',
@@ -1811,6 +1792,21 @@ function didBeginTransition(transition: Transition, router: EmberRouter) {
       throw error;
     }
   }, 'Transition Error');
+}
+
+function managementForQueryParam(router: EmberRouter, qp: QueryParam) {
+  let management = router.getRoute(qp.fullRouteName);
+
+  assert(`expected management for query param route ${qp.fullRouteName}`, management !== undefined);
+
+  let { manager, bucket } = management;
+
+  assert(
+    `expected classic-interop manager for query param route ${qp.fullRouteName}`,
+    hasClassicInterop(manager)
+  );
+
+  return { manager, bucket };
 }
 
 function forEachQueryParam(

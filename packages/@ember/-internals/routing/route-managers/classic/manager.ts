@@ -74,11 +74,6 @@ export class ClassicRouteManager implements RouteManagerWithClassicInterop<Class
     return new ClassicRouteBucket(route);
   }
 
-  getRoute(bucket: ClassicRouteBucket) {
-    assert('Expected route bucket to expose a `route` instance', bucket.route);
-    return bucket.route;
-  }
-
   getDestroyable(_bucket: ClassicRouteBucket): object | null {
     // Classic routes are container-managed (`owner.lookup('route:…')`), so
     // the owner already destroys them at teardown.

@@ -365,12 +365,6 @@ export interface RouteManager<Bucket extends RouteStateBucket = RouteStateBucket
 export interface RouteManagerWithClassicInterop<
   Bucket extends RouteStateBucket = RouteStateBucket,
 > extends RouteManager<Bucket> {
-  /**
-    Returns the classic `Route` instance backing a bucket, for the legacy APIs
-    that still surface one (transition promise value, transition error route).
-   */
-  getRoute(bucket: Bucket): unknown;
-
   // Lifecycle hooks, widened with the capability-gated interop state. The
   // router narrows via `hasClassicInterop` before dispatching these shapes.
   willEnter(bucket: Bucket, state: ClassicWillEnterState): void;

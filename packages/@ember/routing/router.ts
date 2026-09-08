@@ -7,6 +7,7 @@ import { set } from '@ember/-internals/metal/lib/property_set';
 import type Owner from '@ember/owner';
 import { getOwner } from '@ember/owner';
 import { getRouteManager } from '@ember/-internals/routing/route-managers/registry';
+import { ClassicRouteBucket } from '@ember/-internals/routing/route-managers/classic/bucket';
 import type { RouteManager } from '@ember/-internals/routing/route-managers/api';
 import type { RouteManagement } from 'router_js';
 import { hasClassicInterop } from '@ember/-internals/routing/route-managers/api';
@@ -465,9 +466,8 @@ class EmberRouter extends EmberObject {
       ownerRouteManagement.set(routeName, managed);
     }
 
-    const route = hasClassicInterop(managed.manager)
-      ? managed.manager.getRoute(managed.bucket)
-      : managed.bucket;
+    const route =
+      managed.bucket instanceof ClassicRouteBucket ? managed.bucket.route : managed.bucket;
 
     // Register the handle → {manager, bucket} association that router_js
     // dispatches lifecycle hooks through. Owned by the router so managers
@@ -1644,21 +1644,6 @@ class EmberRouter extends EmberObject {
   declare url: string;
 }
 
-/*
-  Helper function for iterating over routes in a set of routeInfos that are
-  at or above the given origin route. Example: if `originRoute` === 'foo.bar'
-  and the routeInfos given were for 'foo.bar.baz', then the given callback
-  will be invoked with the routes for 'foo.bar', 'foo', and 'application'
-  individually.
-
-  If the callback returns anything other than `true`, then iteration will stop.
-
-  @private
-  @param {Route} originRoute
-  @param {Array<RouteInfo>} routeInfos
-  @param {Function} callback
-  @return {Void}
- */
 // These get invoked when an action bubbles above ApplicationRoute
 // and are not meant to be overridable.
 let defaultActionHandlers = {

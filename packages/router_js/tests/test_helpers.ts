@@ -105,7 +105,6 @@ interface NavigationArgs {
 interface RouteManagerLike {
   capabilities: RouteCapabilities;
   createRoute(definition: any, args: { name: string }): TestRouteBucket;
-  getRoute(bucket: TestRouteBucket): unknown;
   willEnter(bucket: TestRouteBucket, args: NavigationArgs): void;
   enter(bucket: TestRouteBucket, args: NavigationArgs): Promise<unknown>;
   didEnter(bucket: TestRouteBucket, args: NavigationArgs & { enter?: boolean }): void;
@@ -163,12 +162,6 @@ class TestRouteManager implements RouteManagerLike {
       bucket as unknown as RouteStateBucket
     );
     return bucket;
-  }
-
-  // Classic-interop only: these tests drive plain handler objects through the
-  // classic surface, so the router still hands them back to callers.
-  getRoute(bucket: TestRouteBucket): unknown {
-    return bucket.route;
   }
 
   willEnter(_bucket: TestRouteBucket, _args: NavigationArgs): void {}

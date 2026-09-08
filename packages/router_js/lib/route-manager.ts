@@ -337,8 +337,6 @@ export interface RouteManager<Bucket extends RouteStateBucket = RouteStateBucket
 export interface RouteManagerWithClassicInterop<
   Bucket extends RouteStateBucket = RouteStateBucket,
 > extends RouteManager<Bucket> {
-  getTransitionResult(bucket: Bucket): unknown;
-
   isInaccessibleByURL(bucket: Bucket): boolean;
 
   // Lifecycle hooks, widened with the capability-gated interop state. The

@@ -78,10 +78,6 @@ export class ClassicRouteManager implements RouteManagerWithClassicInterop<Class
     return bucket;
   }
 
-  getTransitionResult(bucket: ClassicRouteBucket): unknown {
-    return bucket.route;
-  }
-
   isInaccessibleByURL(bucket: ClassicRouteBucket): boolean {
     return Boolean((bucket.route as { inaccessibleByURL?: boolean }).inaccessibleByURL);
   }

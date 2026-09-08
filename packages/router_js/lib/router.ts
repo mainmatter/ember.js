@@ -186,9 +186,6 @@ export default abstract class Router {
   //   4. `didEnter` on entered routes (and, interop-only, updated routes)
   //   5. `didExit` on exited routes
   //   6. query-param finalisation, URL update, didTransition events
-  //
-  // Resolves the transition's promise with the leaf route, preserving the
-  // classic `finalizeTransition` contract.
   onTransitionSettled(
     activeTransition: InternalTransition,
     newState: TransitionState
@@ -357,12 +354,7 @@ export default abstract class Router {
       this.toInfos(activeTransition, newState.routeInfos, true);
       this.routeDidChange(activeTransition);
 
-      // Resolve the transition's promise with the leaf route, preserving the
-      // classic finalizeTransition contract.
-      const leaf = newState.routeInfos[newState.routeInfos.length - 1];
-      return leaf !== undefined && leaf.manager !== undefined && hasClassicInterop(leaf.manager)
-        ? leaf.manager.getTransitionResult(leaf.bucket!)
-        : undefined;
+      return undefined;
     });
   }
 

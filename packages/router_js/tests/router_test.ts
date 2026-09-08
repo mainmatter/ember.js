@@ -38,6 +38,11 @@ function isPresent(maybe: Maybe<PublicRouteInfo>): maybe is PublicRouteInfo {
   return maybe !== undefined && maybe !== null;
 }
 
+function currentLeafName(activeRouter: Router): string | undefined {
+  let routeInfos = activeRouter.state?.routeInfos ?? [];
+  return routeInfos[routeInfos.length - 1]?.name;
+}
+
 let serializers: Dict<SerializerFunc<unknown>>, expectedUrl: Maybe<string>;
 let scenarios = [
   {
@@ -4474,25 +4479,22 @@ scenarios.forEach(function (scenario) {
       });
   });
 
-  QUnit.test('a successful transition resolves with the target handler', function (assert) {
+  QUnit.test('a successful transition enters the target handler', function (assert) {
     assert.expect(2);
 
-    // Note: this is extra convenient for Ember where you can all
-    // .transitionTo right on the route.
-
     routes = {
-      index: createHandler('index', { borfIndex: true }),
-      about: createHandler('about', { borfAbout: true }),
+      index: createHandler('index'),
+      about: createHandler('about'),
     };
 
-    router
+    return router
       .handleURL('/index')
-      .then(function (route: unknown) {
-        assert.ok((route as any)['borfIndex'], 'resolved to index handler');
+      .then(function () {
+        assert.equal(currentLeafName(router), 'index', 'entered the index handler');
         return router.transitionTo('about');
       }, shouldNotHappen(assert))
-      .then(function (result: Dict<unknown>) {
-        assert.ok(result['borfAbout'], 'resolved to about handler');
+      .then(function () {
+        assert.equal(currentLeafName(router), 'about', 'entered the about handler');
       });
   });
 
@@ -4872,20 +4874,20 @@ scenarios.forEach(function (scenario) {
       router
         .transitionTo('/index')
         .followRedirects()
-        .then(function (handler: unknown) {
+        .then(function () {
           assert.equal(
-            handler,
-            routes['index'],
+            currentLeafName(router),
+            'index',
             'followRedirects works with non-redirecting transitions'
           );
 
           return router.transitionTo('about').followRedirects();
         })
-        .then(function (handler: unknown) {
+        .then(function () {
           assert.equal(
-            handler,
-            routes['faq'],
-            'followRedirects promise resolved with redirected faq handler'
+            currentLeafName(router),
+            'faq',
+            'followRedirects settled on the redirected faq route'
           );
 
           (routes['about'] as ClassicRoute).beforeModel = function (transition: Transition) {
@@ -4924,10 +4926,10 @@ scenarios.forEach(function (scenario) {
       router
         .transitionTo('/index')
         .followRedirects()
-        .then(function (handler: unknown) {
+        .then(function () {
           assert.equal(
-            handler,
-            routes['about'],
+            currentLeafName(router),
+            'about',
             'followRedirects works with redirect from async hook transitions'
           );
         });

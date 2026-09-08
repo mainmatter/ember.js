@@ -131,7 +131,6 @@ interface NavigationArgs {
 interface RouteManagerLike {
   capabilities: RouteCapabilities;
   createRoute(definition: any, args: { name: string }): TestRouteBucket;
-  getTransitionResult(bucket: TestRouteBucket): unknown;
   willEnter(bucket: TestRouteBucket, args: NavigationArgs): void;
   enter(bucket: TestRouteBucket, args: NavigationArgs): Promise<unknown>;
   didEnter(bucket: TestRouteBucket, args: NavigationArgs & { enter?: boolean }): void;
@@ -186,10 +185,6 @@ class TestRouteManager implements RouteManagerLike {
       bucket as unknown as RouteStateBucket
     );
     return bucket;
-  }
-
-  getTransitionResult(bucket: TestRouteBucket): unknown {
-    return bucket.route;
   }
 
   willEnter(_bucket: TestRouteBucket, _args: NavigationArgs): void {}

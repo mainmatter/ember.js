@@ -59,7 +59,6 @@ export interface QueryParam {
   prop: string;
   urlKey: string;
   type: string;
-  route: Route;
   parts?: string[];
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   values: {} | null;
@@ -70,6 +69,7 @@ export interface QueryParam {
   serializedValue: string | null | undefined;
   serializedDefaultValue: string | null | undefined;
   controllerName: string;
+  fullRouteName: string;
 }
 
 export type QueryParamMeta = {
@@ -1000,7 +1000,7 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler) {
         assert('expected aQp', aQp);
         aQp.values = params;
 
-        let cacheKey = calculateCacheKey(aQp.route.fullRouteName, aQp.parts, aQp.values);
+        let cacheKey = calculateCacheKey(aQp.fullRouteName, aQp.parts, aQp.values);
         let value = cache.lookup(cacheKey, prop, aQp.undecoratedDefaultValue);
         set(controller, prop, value);
       });
@@ -1032,7 +1032,7 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler) {
 
     // Update model-dep cache
     let cache = this._bucketCache;
-    let cacheKey = calculateCacheKey(qp.route.fullRouteName, qp.parts, qp.values);
+    let cacheKey = calculateCacheKey(qp.fullRouteName, qp.parts, qp.values);
     cache.stash(cacheKey, prop, value);
   }
 
@@ -1702,6 +1702,7 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler) {
 
       let defaultValueSerialized = this.serializeQueryParam(defaultValue, urlKey, type);
       let scopedPropertyName = `${controllerName}:${propName}`;
+
       let qp: QueryParam = {
         undecoratedDefaultValue: get(controller!, propName),
         defaultValue,
@@ -1713,7 +1714,7 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler) {
         prop: propName,
         scopedPropertyName,
         controllerName,
-        route: this,
+        fullRouteName: this.fullRouteName,
         parts, // provided later when stashNames is called if 'model' scope
         values: null, // provided later when setup is called. no idea why.
         scope,

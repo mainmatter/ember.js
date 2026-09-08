@@ -25,7 +25,7 @@ index 28a899ef8a6754f6b18aad4c557ecd048b817451..f05c2eb0c3dc378df493f4a05d7e249c
  
  /**
    @private
-@@ -55,6 +64,108 @@ function lookupOutletTemplate(owner) {
+@@ -55,6 +64,107 @@ function lookupOutletTemplate(owner) {
    return OutletTemplate;
  }
  let templateId = 0;
@@ -71,9 +71,8 @@ index 28a899ef8a6754f6b18aad4c557ecd048b817451..f05c2eb0c3dc378df493f4a05d7e249c
 +    // @TODO: Evaluate if `renderRootComponent` should allow an alternative owner
 +    // as per `RenderOptions.owner` comment
 +    run(() => renderComponent(component, {
-+      into: getRootElement(),
-+      owner: ownerToRenderFrom,
-+      appendIntoTarget: true
++      into: { element: getRootElement(), nextSibling: null },
++      owner: ownerToRenderFrom
 +    }));
 +  }
 +}

@@ -22,11 +22,12 @@ import type {
 
 import { artifacts } from '@glimmer/program/lib/helpers';
 import { RuntimeOpImpl } from '@glimmer/program/lib/opcode';
+import { liveParent } from '@glimmer/runtime/lib/bounds';
 import { clientBuilder } from '@glimmer/runtime/lib/vm/element-builder';
 import { inTransaction, runtimeOptions } from '@glimmer/runtime/lib/environment';
 import { renderComponent as glimmerRenderComponent } from '@glimmer/runtime/lib/render';
 import { CURRENT_TAG, validateTag, valueForTag } from '@glimmer/validator/lib/validators';
-import type { SimpleDocument, SimpleElement } from '@simple-dom/interface';
+import type { SimpleDocument, SimpleDocumentFragment, SimpleElement } from '@simple-dom/interface';
 import { hasDOM } from '../../browser-environment';
 import { EmberEnvironmentDelegate } from './environment';
 import ResolverImpl from './resolver';
@@ -402,7 +403,7 @@ export class RendererState {
   }
 }
 
-type IntoTarget = Cursor | Element | SimpleElement;
+type IntoTarget = Cursor | Element | SimpleElement | DocumentFragment | SimpleDocumentFragment;
 
 /**
  * The returned object from `renderComponent`
@@ -462,17 +463,11 @@ export function renderComponent(
     env,
     into,
     args,
-    appendIntoTarget = false,
   }: {
     /**
      * The element to render the component in to.
      */
     into: IntoTarget;
-
-    /**
-     * Appends `into` without clearing the target first. Mimics the `appendTo` behavior for classic components.
-     */
-    appendIntoTarget?: boolean;
 
     /**
      * Optional owner. Defaults to `{}`, can be any object, but will need to implement the [Owner](https://api.emberjs.com/ember/release/classes/Owner) API for components within this render tree to access services.
@@ -540,7 +535,7 @@ export function renderComponent(
    * Because destruction is async, it won't be safe to
    * do this again, and we'll have to rely on the above destroy.
    */
-  if (!(appendIntoTarget || existing) && into instanceof Element) {
+  if (!existing && typeof Element !== 'undefined' && into instanceof Element) {
     into.innerHTML = '';
   }
 
@@ -558,10 +553,8 @@ export function renderComponent(
    */
   let renderTarget: IntoTarget = into;
   if (existing?.glimmerResult) {
-    let parentElement =
-      into instanceof Element ? (into as unknown as SimpleElement) : (into as Cursor).element;
     let firstNode = existing.glimmerResult.firstNode();
-    renderTarget = { element: parentElement, nextSibling: firstNode };
+    renderTarget = { element: liveParent(existing.glimmerResult), nextSibling: firstNode };
   }
 
   let innerResult = renderer.render(component, { into: renderTarget, args }).result;

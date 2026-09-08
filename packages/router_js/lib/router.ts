@@ -122,9 +122,9 @@ export default abstract class Router {
     newState: TransitionState,
     _preTransitionState: TransitionState | undefined
   ): never {
-    const errorRoute = newState.routeInfos[newState.routeInfos.length - 1]?.route;
+    const errorBucket = newState.routeInfos[newState.routeInfos.length - 1]?.bucket;
     const reason = this.transitionDidError(
-      { error, route: errorRoute, wasAborted: false } as unknown as TransitionError,
+      { error, bucket: errorBucket, wasAborted: false } as unknown as TransitionError,
       activeTransition
     );
     throw reason;

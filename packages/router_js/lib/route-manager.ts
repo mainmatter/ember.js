@@ -470,15 +470,24 @@ export interface RouteManagerWithClassicInterop<
 
   triggerLoadingEvent(bucket: Bucket, transition: Transition): void;
 
-  triggerErrorEvent(bucket: Bucket, transition: Transition, error: Error, route: unknown): void;
+  triggerErrorEvent(
+    bucket: Bucket,
+    transition: Transition,
+    error: Error,
+    originBucket: RouteStateBucket | undefined
+  ): void;
 
-  handleLoadingEvent(bucket: Bucket, transition: Transition, originRoute: unknown): void;
+  handleLoadingEvent(
+    bucket: Bucket,
+    transition: Transition,
+    originBucket: RouteStateBucket | undefined
+  ): void;
 
   handleErrorEvent(
     bucket: Bucket,
     transition: Transition,
     error: Error,
-    originRoute: unknown
+    originBucket: RouteStateBucket | undefined
   ): boolean;
 
   /**

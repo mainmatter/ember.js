@@ -30,6 +30,7 @@ import type {
   CreateRouteArgs,
   RouteCapabilities,
   RouteManagerWithClassicInterop,
+  RouteStateBucket,
 } from '../api';
 import { routeCapabilities } from '../api';
 import type { QueryParamMeta } from '@ember/routing/route';
@@ -330,24 +331,25 @@ export class ClassicRouteManager implements RouteManagerWithClassicInterop<Class
     _bucket: ClassicRouteBucket,
     transition: Transition,
     error: Error,
-    route: unknown
+    originBucket: RouteStateBucket | undefined
   ): void {
     const active = transition as ActiveTransition;
+    const originRoute = originBucket instanceof ClassicRouteBucket ? originBucket.route : undefined;
 
-    active.trigger?.(false, 'error', error, active, route);
+    active.trigger?.(false, 'error', error, active, originRoute);
   }
 
   handleLoadingEvent(
     bucket: ClassicRouteBucket,
     transition: Transition,
-    originRoute: unknown
+    originBucket: RouteStateBucket | undefined
   ): void {
     const active = transition as ActiveTransition;
     if (!active.isActive) {
       return;
     }
 
-    const substateName = findSubstateName(originRoute as Route | undefined, active, 'loading');
+    const substateName = findSubstateName(originBucket, active, 'loading');
     if (substateName) {
       bucket.route._router.intermediateTransitionTo(substateName);
     }
@@ -357,10 +359,10 @@ export class ClassicRouteManager implements RouteManagerWithClassicInterop<Class
     bucket: ClassicRouteBucket,
     transition: Transition,
     error: Error,
-    originRoute: unknown
+    originBucket: RouteStateBucket | undefined
   ): boolean {
     const active = transition as ActiveTransition;
-    const substateName = findSubstateName(originRoute as Route | undefined, active, 'error');
+    const substateName = findSubstateName(originBucket, active, 'error');
     if (!substateName) {
       return false;
     }

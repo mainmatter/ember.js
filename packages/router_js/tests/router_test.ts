@@ -1674,7 +1674,7 @@ scenarios.forEach(function (scenario) {
       if (error.wasAborted || transition.isAborted) {
         return logAbort(transition);
       } else {
-        transition.trigger(false, 'error', error.error, transition, error.route);
+        transition.trigger(false, 'error', error.error, transition, error.bucket);
         if (errorHandled) {
           transition.rollback();
           router.routeDidChange(transition);
@@ -1790,7 +1790,7 @@ scenarios.forEach(function (scenario) {
       if (error.wasAborted || transition.isAborted) {
         return logAbort(transition);
       } else {
-        transition.trigger(false, 'error', error.error, transition, error.route);
+        transition.trigger(false, 'error', error.error, transition, error.bucket);
         if (errorHandled) {
           transition.rollback();
           router.toInfos(transition, router.state!.routeInfos, true);

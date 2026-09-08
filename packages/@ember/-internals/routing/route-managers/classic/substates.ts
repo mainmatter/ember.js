@@ -14,7 +14,7 @@ import { assert } from '@ember/debug';
 import type Owner from '@ember/-internals/owner';
 import { getOwner } from '@ember/-internals/owner';
 import type Route from '@ember/routing/route';
-import type { InternalRouteInfo } from 'router_js';
+import type { InternalRouteInfo, RouteStateBucket } from 'router_js';
 import { STATE_SYMBOL } from 'router_js';
 import { ClassicRouteBucket } from './bucket';
 
@@ -110,14 +110,14 @@ function routeHasBeenDefined(owner: Owner, router: any, localName: string, fullN
     far up.
 
   @private
-  @param {Route|undefined} originRoute the route currently resolving (or
-    erroring); when `undefined` the walk starts at the transition's leaf and
-    considers both substate forms everywhere
+  @param {RouteStateBucket|undefined} originBucket the bucket of the route
+    currently resolving (or erroring); when `undefined` the walk starts at the
+    transition's leaf and considers both substate forms everywhere
   @param {Transition} transition the active transition
   @param {String} state the substate to look for, e.g. `loading` or `error`
  */
 export function findSubstateName(
-  originRoute: Route | undefined,
+  originBucket: RouteStateBucket | undefined,
   transition: ActiveTransition,
   state: 'loading' | 'error'
 ): string {
@@ -125,9 +125,9 @@ export function findSubstateName(
   const pivotBucket = transition.pivotBucket;
 
   const originIndex =
-    originRoute === undefined
+    originBucket === undefined
       ? -1
-      : routeInfos.findIndex((candidate) => candidate?.route === originRoute);
+      : routeInfos.findIndex((candidate) => candidate?.bucket === originBucket);
   const originRouteInfo = originIndex >= 0 ? routeInfos[originIndex] : undefined;
   const startIndex = originIndex >= 0 ? originIndex : routeInfos.length - 1;
 

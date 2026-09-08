@@ -602,7 +602,7 @@ class EmberRouter extends EmberObject {
           let bucket = dispatch?.bucket;
 
           if (manager && bucket && hasClassicInterop(manager)) {
-            manager.triggerErrorEvent(bucket, transition, error.error, error.route);
+            manager.triggerErrorEvent(bucket, transition, error.error, error.bucket);
           }
           if (router._isErrorHandled(error.error)) {
             // If we handled the error with a substate just roll the state back on
@@ -1666,13 +1666,13 @@ let defaultActionHandlers = {
   // `error` below, this only forwards through the classic-interop contract;
   // the manager owns substate entry.
   loading(this: EmberRouter, routeInfos: InternalRouteInfo[], transition: Transition) {
-    let originRoute = routeInfos[routeInfos.length - 1]?.route;
+    let originBucket = routeInfos[routeInfos.length - 1]?.bucket;
     let dispatch = dispatchRouteInfoFor(routeInfos);
     let manager = dispatch?.manager;
     let bucket = dispatch?.bucket;
 
     if (manager && bucket && hasClassicInterop(manager)) {
-      manager.handleLoadingEvent(bucket, transition, originRoute);
+      manager.handleLoadingEvent(bucket, transition, originBucket);
     }
   },
 
@@ -1685,13 +1685,13 @@ let defaultActionHandlers = {
     // created (e.g. across an engine's async boundary) — dispatch then
     // falls to the deepest route with a classic manager, and the manager
     // walks from the transition's leaf.
-    let originRoute = routeInfos[routeInfos.length - 1]?.route;
+    let originBucket = routeInfos[routeInfos.length - 1]?.bucket;
     let dispatch = dispatchRouteInfoFor(routeInfos);
     let manager = dispatch?.manager;
     let bucket = dispatch?.bucket;
 
     if (manager && bucket && hasClassicInterop(manager)) {
-      if (manager.handleErrorEvent(bucket, transition, error, originRoute)) {
+      if (manager.handleErrorEvent(bucket, transition, error, originBucket)) {
         this._markErrorAsHandled(error);
       }
     }

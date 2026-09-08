@@ -5,6 +5,7 @@ import type InternalRouteInfo from './route-info';
 import type Transition from './transition';
 import { forEach, promiseLabel } from './utils';
 import { throwIfAborted } from './transition-aborted-error';
+import type { RouteStateBucket } from './route-manager';
 import { hasClassicInterop } from './route-manager';
 
 interface IParams {
@@ -22,7 +23,7 @@ function handleError(currentState: TransitionState, transition: Transition, erro
 
   throw new TransitionError(
     error,
-    currentState.routeInfos[errorHandlerIndex]!.route!,
+    currentState.routeInfos[errorHandlerIndex]!.bucket!,
     wasAborted,
     currentState
   );
@@ -128,7 +129,7 @@ export default class TransitionState {
 export class TransitionError {
   constructor(
     public error: Error,
-    public route: object,
+    public bucket: RouteStateBucket,
     public wasAborted: boolean,
     public state: TransitionState
   ) {}

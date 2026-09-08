@@ -337,7 +337,7 @@ export class TestRouter extends Router {
     if (error.wasAborted || transition.isAborted) {
       return logAbort(transition);
     } else {
-      transition.trigger(false, 'error', error.error, this, error.route);
+      transition.trigger(false, 'error', error.error, this, error.bucket);
       transition.abort();
       return error.error;
     }

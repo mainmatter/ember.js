@@ -6,6 +6,7 @@ export interface Scenario {
   nav: { route: string; label: string; model?: string };
   routerMap: string;
   routes: FileTree;
+  controllers?: FileTree;
   templates?: FileTree;
   routeComponent?: string;
   invokable?: string;
@@ -636,6 +637,128 @@ export const SCENARIOS: Scenario[] = [
       'glimmer-wrapper': COMPONENTS.GlimmerWrapperParent,
       'glimmer-wrapper.child': COMPONENTS.GlimmerWrapperChild,
     `,
+  },
+  {
+    nav: { route: 'qp-parent', label: 'Query params' },
+    routerMap: `
+      this.route('qp-parent', function () {
+        this.route('qp-child');
+        this.route('qp-funky');
+      });
+    `,
+    routes: {
+      'qp-parent.js': `
+  import Route from '@ember/routing/route';
+  import { action } from '@ember/object';
+  import { actionLog, modelStarts } from '__APP__/router';
+
+  export default class extends Route {
+    queryParams = {
+      parentQp: { refreshModel: true },
+      aliased: { as: 'alias' },
+      replaced: { replace: true },
+    };
+
+    model() {
+      modelStarts.push('qp-parent');
+      return 'model:qp-parent';
+    }
+
+    @action
+    nonFrameworkAction(arg) {
+      actionLog.push('qp-parent:nonFrameworkAction:' + arg);
+    }
+
+    @action
+    willTransition() {
+      actionLog.push('qp-parent:willTransition');
+      return true;
+    }
+
+    @action
+    didTransition() {
+      actionLog.push('qp-parent:didTransition');
+      return true;
+    }
+
+    @action
+    loading() {
+      actionLog.push('qp-parent:loading');
+      return true;
+    }
+
+    @action
+    error() {
+      actionLog.push('qp-parent:error');
+      return true;
+    }
+  }
+`,
+      'qp-parent': {
+        'qp-child.js': `
+  import Route from '@ember/routing/route';
+  import { action } from '@ember/object';
+  import { actionLog } from '__APP__/router';
+
+  export default class extends Route {
+    queryParams = { childQp: {} };
+
+    model() {
+      return 'model:qp-parent.qp-child';
+    }
+
+    beforeModel(transition) {
+      transition.trigger(false, 'nonFrameworkAction', 'from-child');
+    }
+
+    @action
+    queryParamsDidChange() {
+      actionLog.push('qp-child:queryParamsDidChange');
+      return true;
+    }
+  }
+`,
+        'qp-funky.js': funkyRoute('qp-parent.qp-funky'),
+      },
+    },
+    controllers: {
+      'qp-parent.js': `
+  import Controller from '@ember/controller';
+
+  export default class extends Controller {
+    queryParams = ['parentQp', 'aliased', 'replaced'];
+    parentQp = 'default';
+    aliased = 'alias-default';
+    replaced = 'replaced-default';
+  }
+`,
+      'qp-parent': {
+        'qp-child.js': `
+  import Controller from '@ember/controller';
+
+  export default class extends Controller {
+    queryParams = ['childQp'];
+    childQp = 'child-default';
+  }
+`,
+      },
+    },
+    templates: {
+      'qp-parent.gjs': classicTemplate(
+        level(
+          'classic',
+          'qp-parent',
+          childLink('qp-parent.qp-child', 'qp child') +
+            childLink('qp-parent.qp-funky', 'qp funky') +
+            OUTLET
+        )
+      ),
+      'qp-parent': {
+        'qp-child.gjs': classicTemplate(level('classic', 'qp-parent.qp-child')),
+      },
+    },
+    routeComponent: routeComponent('QpFunky', level('funky', 'qp-parent.qp-funky')),
+    invokable: `'qp-parent.qp-funky': COMPONENTS.QpFunky,`,
   },
 ];
 

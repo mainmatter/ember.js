@@ -10,7 +10,16 @@ export function appFiles(appName: string): FileTree {
       import EmberRouter from '@ember/routing/router';
       import config from '__APP__/config/environment';
 
-      export const modelStarts = [];
+      export let modelStarts = [];
+      export let actionLog = [];
+
+      export function resetModelStarts() {
+        modelStarts = [];
+      }
+
+      export function resetActionLog() {
+        actionLog = [];
+      }
 
       export default class Router extends EmberRouter {
         location = config.locationType;
@@ -40,6 +49,7 @@ ${SCENARIOS.map((scenario) => scenario.routeComponent ?? '').join('')}      `,
         'glimmer-route.js': GLIMMER_ROUTE_BASE,
         ...Object.assign({}, ...SCENARIOS.map((scenario) => scenario.routes)),
       },
+      controllers: Object.assign({}, ...SCENARIOS.map((scenario) => scenario.controllers ?? {})),
       services: {
         'wrapper-log.js': WRAPPER_LOG_SERVICE,
       },
@@ -309,6 +319,10 @@ const WRAPPER_LOG_SERVICE = `
 
     record(entry) {
       this.entries.push(entry);
+    }
+
+    reset() {
+      this.entries = [];
     }
   }
 `;

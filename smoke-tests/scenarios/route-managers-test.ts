@@ -16,7 +16,7 @@ function routeManagerTests(scenarios: Scenarios, appName: string) {
               import { module, test } from 'qunit';
               import { click, currentURL, settled, visit, waitUntil } from '@ember/test-helpers';
               import { setupApplicationTest } from '${appName}/tests/helpers';
-              import { modelStarts } from '${appName}/router';
+              import { actionLog, modelStarts, resetActionLog, resetModelStarts } from '${appName}/router';
               import { resolveModel as resolveParentModel } from '${appName}/routes/reactive-context';
               import { resolveModel as resolveChildModel } from '${appName}/routes/reactive-context/child';
 
@@ -276,7 +276,7 @@ function routeManagerTests(scenarios: Scenarios, appName: string) {
                   await click(scenarioLink(route));
                   await click(childLink(route + '.child'));
 
-                  log.entries.length = 0;
+                  log.reset();
 
                   await click(scenarioLink(route));
 
@@ -316,7 +316,7 @@ function routeManagerTests(scenarios: Scenarios, appName: string) {
                 });
 
                 test('a non-classic manager loads ancestor and descendant models in parallel', async function (assert) {
-                  modelStarts.length = 0;
+                  resetModelStarts();
 
                   visit('/reactive-context/child');
 
@@ -341,7 +341,7 @@ function routeManagerTests(scenarios: Scenarios, appName: string) {
                 });
 
                 test('a filled-in context survives a transition that keeps the route mounted', async function (assert) {
-                  modelStarts.length = 0;
+                  resetModelStarts();
 
                   let visitPromise = visit('/reactive-context/child');
 
@@ -356,6 +356,111 @@ function routeManagerTests(scenarios: Scenarios, appName: string) {
                   await visit('/reactive-context');
 
                   assertLevel(assert, 'reactive', 'reactive-context', 'PARENT-CTX');
+                });
+
+                test('query params round-trip through a classic route', async function (assert) {
+                  await visit('/qp-parent?parentQp=fromUrl');
+
+                  let controller = this.owner.lookup('controller:qp-parent');
+                  assert.strictEqual(controller.parentQp, 'fromUrl', 'url value reached the controller');
+
+                  controller.set('parentQp', 'fromController');
+                  await settled();
+                  assert.strictEqual(currentURL(), '/qp-parent?parentQp=fromController');
+                });
+
+                test('a default-valued query param stays out of the url', async function (assert) {
+                  await visit('/qp-parent');
+                  assert.strictEqual(currentURL(), '/qp-parent', 'default is not serialized');
+
+                  let controller = this.owner.lookup('controller:qp-parent');
+                  controller.set('parentQp', 'default');
+                  await settled();
+                  assert.strictEqual(currentURL(), '/qp-parent', 'returning to default drops the key');
+                });
+
+                test('refreshModel re-runs the model hook', async function (assert) {
+                  await visit('/qp-parent');
+                  resetModelStarts();
+
+                  let controller = this.owner.lookup('controller:qp-parent');
+                  controller.set('parentQp', 'changed');
+                  await settled();
+
+                  assert.deepEqual(modelStarts, ['qp-parent'], 'refreshModel re-ran model');
+                });
+
+                test('an aliased query param uses its url key', async function (assert) {
+                  await visit('/qp-parent?alias=fromUrl');
+
+                  let controller = this.owner.lookup('controller:qp-parent');
+                  assert.strictEqual(controller.aliased, 'fromUrl', 'alias mapped onto the property');
+
+                  controller.set('aliased', 'next');
+                  await settled();
+                  assert.strictEqual(currentURL(), '/qp-parent?alias=next', 'serialized under the alias');
+                });
+
+                test('parent and child query params are resolved to their own routes', async function (assert) {
+                  await visit('/qp-parent/qp-child?parentQp=p&childQp=c');
+
+                  let parent = this.owner.lookup('controller:qp-parent');
+                  let child = this.owner.lookup('controller:qp-parent/qp-child');
+
+                  assert.strictEqual(parent.parentQp, 'p', 'parent qp landed on the parent controller');
+                  assert.strictEqual(child.childQp, 'c', 'child qp landed on the child controller');
+
+                  child.set('childQp', 'c2');
+                  await settled();
+                  assert.strictEqual(currentURL(), '/qp-parent/qp-child?childQp=c2&parentQp=p');
+                  assert.strictEqual(parent.parentQp, 'p', 'parent qp untouched by a child change');
+                });
+
+                test('classic query params work with a non-classic route in the hierarchy', async function (assert) {
+                  await visit('/qp-parent/qp-funky?parentQp=mixed');
+
+                  assertLevel(assert, 'classic', 'qp-parent');
+
+                  let controller = this.owner.lookup('controller:qp-parent');
+                  assert.strictEqual(controller.parentQp, 'mixed', 'classic qp survives a funky descendant');
+
+                  controller.set('parentQp', 'mixed2');
+                  await settled();
+                  assert.strictEqual(currentURL(), '/qp-parent/qp-funky?parentQp=mixed2');
+                });
+
+                test('an app-authored action bubbles from child to parent', async function (assert) {
+                  resetActionLog();
+                  await visit('/qp-parent/qp-child');
+
+                  assert.ok(
+                    actionLog.includes('qp-parent:nonFrameworkAction:from-child'),
+                    'nonFrameworkAction reached the parent with its argument'
+                  );
+                });
+
+                test('framework actions reach the route', async function (assert) {
+                  await visit('/qp-parent');
+                  resetActionLog();
+
+                  await visit('/qp-parent/qp-child');
+
+                  assert.ok(actionLog.includes('qp-parent:willTransition'), 'willTransition fired');
+                  assert.ok(actionLog.includes('qp-parent:didTransition'), 'didTransition fired');
+                });
+
+                test('a route may override queryParamsDidChange', async function (assert) {
+                  await visit('/qp-parent/qp-child');
+                  resetActionLog();
+
+                  let child = this.owner.lookup('controller:qp-parent/qp-child');
+                  child.set('childQp', 'changed');
+                  await settled();
+
+                  assert.ok(
+                    actionLog.includes('qp-child:queryParamsDidChange'),
+                    'the route override ran'
+                  );
                 });
               });
             `,

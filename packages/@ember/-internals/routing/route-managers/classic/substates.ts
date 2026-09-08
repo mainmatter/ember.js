@@ -15,18 +15,13 @@ import type Owner from '@ember/-internals/owner';
 import { getOwner } from '@ember/-internals/owner';
 import type Route from '@ember/routing/route';
 import type { InternalRouteInfo } from 'router_js';
-import { hasClassicInterop, STATE_SYMBOL } from 'router_js';
+import { STATE_SYMBOL } from 'router_js';
+import { ClassicRouteBucket } from './bucket';
 
 // Substates are classic only. A classic route has a `foo.loading`
 // sibling, and only it carries the owner and names the lookup needs.
 function classicRouteFor(routeInfo: InternalRouteInfo): Route | undefined {
-  const { manager, bucket } = routeInfo;
-
-  if (manager === undefined || bucket === undefined || !hasClassicInterop(manager)) {
-    return undefined;
-  }
-
-  return manager.getRoute(bucket) as Route;
+  return routeInfo.bucket instanceof ClassicRouteBucket ? routeInfo.bucket.route : undefined;
 }
 
 export type ActiveTransition = {

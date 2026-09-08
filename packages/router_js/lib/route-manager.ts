@@ -81,37 +81,9 @@ export function routeCapabilities<Version extends keyof RouteCapabilitiesVersion
 
 // -- Route-management association --------------------------------------------------
 
-const ROUTE_MANAGEMENT = new WeakMap<object, RouteManagement>();
-
 export interface RouteManagement {
   manager: RouteManager;
   bucket: RouteStateBucket;
-}
-
-/**
-  Associates a route object with the manager and bucket that produced it.
-  Called by the framework router when it resolves a route through a manager;
-  `InternalRouteInfo` reads the association back to dispatch lifecycle hooks.
-  Managers themselves never need to call this.
-
-  Not to be confused with `setRouteManager`/`getRouteManager` (the registry
-  in the `@ember` layer): the registry is keyed by the route **class** and
-  holds the manager *factory* route authors registered — configuration. This
-  association is keyed by a route **instance** and holds the *instantiated*
-  manager plus that instance's bucket — the memoized result of applying the
-  registry, kept here so router_js dispatch can reach it without access to
-  owners or the registry.
- */
-export function associateRouteManagement(
-  route: object,
-  manager: RouteManager,
-  bucket: RouteStateBucket
-): void {
-  ROUTE_MANAGEMENT.set(route, { manager, bucket });
-}
-
-export function getRouteManagement(route: object): RouteManagement | undefined {
-  return ROUTE_MANAGEMENT.get(route);
 }
 
 type Invokable = globalThis.Promise<object> | object;
@@ -365,6 +337,10 @@ export interface RouteManager<Bucket extends RouteStateBucket = RouteStateBucket
 export interface RouteManagerWithClassicInterop<
   Bucket extends RouteStateBucket = RouteStateBucket,
 > extends RouteManager<Bucket> {
+  getTransitionResult(bucket: Bucket): unknown;
+
+  isInaccessibleByURL(bucket: Bucket): boolean;
+
   // Lifecycle hooks, widened with the capability-gated interop state. The
   // router narrows via `hasClassicInterop` before dispatching these shapes.
   willEnter(bucket: Bucket, state: ClassicWillEnterState): void;

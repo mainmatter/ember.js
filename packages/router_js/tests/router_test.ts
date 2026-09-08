@@ -2,7 +2,7 @@
 import type { MatchCallback } from 'route-recognizer';
 import type { Transition } from '../index';
 import type Router from '../index';
-import { associateRouteManagement, getRouteManagement } from '../index';
+
 import type { Dict, Maybe } from '../lib/core';
 import type {
   IModel,
@@ -16,9 +16,12 @@ import type { TransitionError } from '../lib/transition-state';
 import { Promise, reject } from 'rsvp';
 import {
   assertAbort,
+  associateManagement,
   createHandler,
   isExiting,
+  managementFor,
   replaceWith,
+  routeOf,
   shouldNotHappen,
   TestRouter,
   transitionToWithAbort,
@@ -41,7 +44,7 @@ let scenarios = [
     name: 'Sync Get Handler',
     async: false,
     getRoute: function (name: string) {
-      return routes[name] || (routes[name] = createHandler('empty'));
+      return managementFor(routes[name] || (routes[name] = createHandler('empty')));
     },
     getSerializer: function (_name: string) {
       return undefined;
@@ -52,8 +55,8 @@ let scenarios = [
     async: true,
     getRoute: function (name: string) {
       // Treat 'loading' route transitions are synchronous
-      let handler = routes[name] || (routes[name] = createHandler('empty'));
-      return name === 'loading' ? handler : Promise.resolve(handler);
+      let management = managementFor(routes[name] || (routes[name] = createHandler('empty')));
+      return name === 'loading' ? management : Promise.resolve(management);
     },
     getSerializer: function (name: string) {
       return serializers && serializers[name];
@@ -2371,7 +2374,7 @@ scenarios.forEach(function (scenario) {
         beforeModel: function (transition: Transition) {
           assert.equal(
             transition.pivotBucket,
-            getRouteManagement(routes['postIndex']!)?.bucket,
+            managementFor(routes['postIndex']!).bucket,
             'showAllPosts -> showPopularPosts pivotBucket is postIndex'
           );
         },
@@ -2764,7 +2767,7 @@ scenarios.forEach(function (scenario) {
 
       for (let i = handlerInfos.length - 1; i >= 0; i--) {
         let handlerInfo = handlerInfos[i],
-          handler = handlerInfo!.route as any;
+          handler = routeOf(handlerInfo!) as any;
 
         if (handler.actions && handler.actions[name]) {
           if (handler.actions[name].apply(handler, args) !== true) {
@@ -3448,7 +3451,7 @@ scenarios.forEach(function (scenario) {
       },
     };
 
-    associateRouteManagement(route, manager as never, { route, invokable: undefined });
+    associateManagement(route, manager as never, { route, invokable: undefined });
     routes = { brokenInvokable: route };
 
     let transition = router.handleURL('/broken-invokable');
@@ -4971,7 +4974,7 @@ scenarios.forEach(function (scenario) {
       let originalGetHandler = router.getRoute;
       router.getRoute = function () {
         assert.ok(false, 'getHandler should not be called');
-        return createHandler('empty');
+        return managementFor(createHandler('empty'));
       };
 
       assert.equal(router.generate('index'), '/index', 'just index');
@@ -5222,11 +5225,9 @@ scenarios.forEach(function (scenario) {
       router.getRoute = function (name) {
         count++;
 
-        return Promise.resolve(scenario.getRoute.call(null, name)).then(function (
-          handler: ClassicRoute
-        ) {
+        return Promise.resolve(scenario.getRoute.call(null, name)).then(function (management) {
           assert.equal(count, handlerCount);
-          return handler;
+          return management;
         });
       };
 

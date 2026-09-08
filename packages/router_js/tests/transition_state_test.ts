@@ -3,8 +3,8 @@ import type { Dict } from '../lib/core';
 import { UnresolvedRouteInfoByObject, UnresolvedRouteInfoByParam } from '../lib/route-info';
 import TransitionState, { type TransitionError } from '../lib/transition-state';
 import { Promise, resolve } from 'rsvp';
-import { createHandler, createHandlerInfo, TestRouter } from './test_helpers';
-import { associateRouteManagement } from '../lib/route-manager';
+import type { RouteManagement } from '../index';
+import { createHandler, createHandlerInfo, managementFor, TestRouter } from './test_helpers';
 
 QUnit.module('TransitionState');
 
@@ -83,13 +83,15 @@ QUnit.test('Integration w/ HandlerInfos', function (assert) {
       'foo',
       ['foo_id'],
       { foo_id: '123' },
-      createHandler('foo', {
-        model: function (params: Dict<unknown>, payload: Dict<unknown>) {
-          assert.equal(payload, transition);
-          assert.equal(params['foo_id'], '123', 'foo#model received expected params');
-          return resolve(fooModel);
-        },
-      })
+      managementFor(
+        createHandler('foo', {
+          model: function (params: Dict<unknown>, payload: Dict<unknown>) {
+            assert.equal(payload, transition);
+            assert.equal(params['foo_id'], '123', 'foo#model received expected params');
+            return resolve(fooModel);
+          },
+        })
+      )
     ),
     new UnresolvedRouteInfoByObject(router, 'bar', ['bar_id'], resolve(barModel)),
   ];
@@ -111,7 +113,11 @@ QUnit.test('Integration w/ HandlerInfos', function (assert) {
     });
 });
 
-function createManagedHandler(name: string, enter: () => Promise<unknown>, classicInterop = false) {
+function createManagedHandler(
+  name: string,
+  enter: () => Promise<unknown>,
+  classicInterop = false
+): RouteManagement {
   let manager = {
     capabilities: { classicInterop },
     willEnter() {},
@@ -123,8 +129,7 @@ function createManagedHandler(name: string, enter: () => Promise<unknown>, class
   };
 
   let handler = createHandler(name);
-  associateRouteManagement(handler, manager as never, { route: handler, invokable: undefined });
-  return handler;
+  return { manager: manager as never, bucket: { route: handler, invokable: undefined } };
 }
 
 QUnit.test('routes load in parallel while an ancestor is still pending', async function (assert) {

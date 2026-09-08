@@ -18,13 +18,7 @@ export {
 
 export { throwIfAborted } from './lib/transition-aborted-error';
 
-export {
-  routeCapabilities,
-  hasClassicInterop,
-  associateRouteManagement,
-  getRouteManagement,
-  invokableFor,
-} from './lib/route-manager';
+export { routeCapabilities, hasClassicInterop, invokableFor } from './lib/route-manager';
 export type {
   RouteManager,
   RouteManagerWithClassicInterop,

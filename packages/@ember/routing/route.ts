@@ -37,7 +37,8 @@ import { setRouteManager } from '@ember/-internals/routing/route-managers/regist
 import { ClassicRouteManager } from '@ember/-internals/routing/route-managers/classic/manager';
 import { hasClassicInterop } from '@ember/-internals/routing/route-managers/api';
 import type { InternalRouteInfo, Transition, TransitionState } from 'router_js';
-import { getRouteManagement, PARAMS_SYMBOL, STATE_SYMBOL } from 'router_js';
+import { PARAMS_SYMBOL, STATE_SYMBOL } from 'router_js';
+import { getRouteManagement } from '@ember/-internals/routing/route-managers/management';
 import type { default as EmberRouter } from '@ember/routing/router';
 import { default as generateController } from './lib/generate_controller';
 import type { ExpandedControllerQueryParam, NamedRouteArgs } from './lib/utils';
@@ -944,7 +945,9 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler) {
     @public
    */
   refresh(): Transition {
-    return this._router._routerMicrolib.refresh(this);
+    let managed = getRouteManagement(this);
+    assert('Expected a classic route manager to refresh', managed !== undefined);
+    return this._router._routerMicrolib.refresh(managed.bucket);
   }
 
   /**
@@ -1828,7 +1831,9 @@ export function getFullQueryParams(router: EmberRouter, state: RouteTransitionSt
     return state.fullQueryParams;
   }
 
-  let haveAllRouteInfosResolved = state.routeInfos.every((routeInfo) => routeInfo.route);
+  let haveAllRouteInfosResolved = state.routeInfos.every(
+    (routeInfo) => routeInfo.hasResolvedManagement
+  );
 
   let fullQueryParamsState: Record<string, unknown> = {
     ...state.queryParams,

@@ -8,7 +8,13 @@ import type InternalRouteInfo from './route-info';
 import { toReadOnlyRouteInfo } from './route-info';
 import type { OpaqueTransition, PublicTransition as Transition } from './transition';
 import InternalTransition, { logAbort, QUERY_PARAMS_SYMBOL, STATE_SYMBOL } from './transition';
-import type { DidEnterState, DidExitState, ExitState, WillExitState } from './route-manager';
+import type {
+  DidEnterState,
+  DidExitState,
+  ExitState,
+  RouteManagement,
+  WillExitState,
+} from './route-manager';
 import { hasClassicInterop } from './route-manager';
 import type { TransitionIntent } from './transition-intent';
 import NamedTransitionIntent from './transition-intent/named-transition-intent';
@@ -44,7 +50,7 @@ export default abstract class Router {
     this.reset();
   }
 
-  abstract getRoute(name: string): object | Promise<object>;
+  abstract getRoute(name: string): RouteManagement | Promise<RouteManagement>;
   abstract getSerializer(name: string): SerializerFunc<unknown> | undefined;
   abstract updateURL(url: string): void;
   abstract replaceURL(url: string): void;
@@ -160,11 +166,11 @@ export default abstract class Router {
     };
 
     for (const routeInfo of partition.entered) {
-      if (routeInfo.route !== undefined) {
+      if (routeInfo.hasResolvedManagement) {
         fireDidEnter(routeInfo);
       } else {
         // Async route (e.g. across an engine boundary): fire once it resolves.
-        void routeInfo.routePromise.then(() => fireDidEnter(routeInfo));
+        void routeInfo.managementPromise.then(() => fireDidEnter(routeInfo));
       }
     }
 
@@ -353,7 +359,10 @@ export default abstract class Router {
 
       // Resolve the transition's promise with the leaf route, preserving the
       // classic finalizeTransition contract.
-      return newState.routeInfos[newState.routeInfos.length - 1]?.route;
+      const leaf = newState.routeInfos[newState.routeInfos.length - 1];
+      return leaf !== undefined && leaf.manager !== undefined && hasClassicInterop(leaf.manager)
+        ? leaf.manager.getTransitionResult(leaf.bucket!)
+        : undefined;
     });
   }
 
@@ -993,7 +1002,7 @@ export default abstract class Router {
     } else if (typeof pivot === 'string') {
       pivotRouteName = pivot;
     } else {
-      pivotRouteName = routeInfos.find((routeInfo) => routeInfo.route === pivot)?.name;
+      pivotRouteName = routeInfos.find((routeInfo) => routeInfo.bucket === pivot)?.name;
     }
 
     log(this, 'Starting a refresh transition');

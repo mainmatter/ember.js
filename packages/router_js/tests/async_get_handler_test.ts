@@ -1,6 +1,7 @@
 import type { Dict } from '../lib/core';
 import { Promise } from 'rsvp';
-import { createHandler, TestRouter } from './test_helpers';
+import type { RouteManagement } from '../index';
+import { createHandler, managementFor, TestRouter } from './test_helpers';
 
 function map(router: TestRouter) {
   router.map(function (match) {
@@ -28,9 +29,9 @@ QUnit.test('can transition to lazily-resolved routes', function (assert) {
 
   class LazyRouter extends TestRouter {
     getRoute(name: string) {
-      return new Promise(function (resolve) {
+      return new Promise<RouteManagement>(function (resolve) {
         setTimeout(function () {
-          resolve(routes[name] || (routes[name] = createHandler('empty')));
+          resolve(managementFor(routes[name] || (routes[name] = createHandler('empty'))));
         }, 1);
       });
     }
@@ -70,11 +71,11 @@ QUnit.test('calls hooks of lazily-resolved routes in order', function (assert) {
   class LazyRouter extends TestRouter {
     getRoute(name: string) {
       operations.push('get handler ' + name);
-      return new Promise(function (resolve) {
+      return new Promise<RouteManagement>(function (resolve) {
         let timeoutLength = name === 'foo' ? 100 : 1;
         setTimeout(function () {
           operations.push('resolved ' + name);
-          resolve(routes[name] || (routes[name] = createHandler('empty')));
+          resolve(managementFor(routes[name] || (routes[name] = createHandler('empty'))));
         }, timeoutLength);
       });
     }

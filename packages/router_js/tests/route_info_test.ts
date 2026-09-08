@@ -8,18 +8,29 @@ import {
   UnresolvedRouteInfoByParam,
 } from '../lib/route-info';
 import InternalTransition, { STATE_SYMBOL } from '../lib/transition';
-import { associateRouteManagement } from '../lib/route-manager';
 import URLTransitionIntent from '../lib/transition-intent/url-transition-intent';
 import { resolve } from 'rsvp';
 import type { ClassicRoute } from './test_helpers';
-import { createHandler, createHandlerInfo, TestRouter } from './test_helpers';
+import {
+  associateManagement,
+  createHandler,
+  createHandlerInfo,
+  managementFor,
+  TestRouter,
+} from './test_helpers';
 
 QUnit.module('RouteInfo');
 
 QUnit.test('ResolvedRouteInfo resolve to themselves', function (assert) {
   assert.expect(1);
   let router = new TestRouter();
-  let routeInfo = new ResolvedRouteInfo(router, 'foo', [], {}, createHandler('empty'));
+  let routeInfo = new ResolvedRouteInfo(
+    router,
+    'foo',
+    [],
+    {},
+    managementFor(createHandler('empty'))
+  );
   let intent = new URLTransitionIntent(router, 'foo');
 
   let transition = new InternalTransition(router, intent, undefined);
@@ -148,15 +159,17 @@ QUnit.test('UnresolvedRouteInfoByParam gets its model hook called', function (as
     'empty',
     [],
     { first_name: 'Alex', last_name: 'Matchnerd' },
-    createHandler('h', {
-      model(params: Dict<unknown>, payload: Dict<unknown>) {
-        assert.equal(payload, transition);
-        assert.deepEqual(params, {
-          first_name: 'Alex',
-          last_name: 'Matchnerd',
-        });
-      },
-    })
+    managementFor(
+      createHandler('h', {
+        model(params: Dict<unknown>, payload: Dict<unknown>) {
+          assert.equal(payload, transition);
+          assert.deepEqual(params, {
+            first_name: 'Alex',
+            last_name: 'Matchnerd',
+          });
+        },
+      })
+    )
   );
 
   routeInfo.resolve(transition);
@@ -199,9 +212,21 @@ QUnit.test('UnresolvedRouteInfoByObject does NOT get its model hook called', fun
 QUnit.test('RouteInfo.find', function (assert) {
   assert.expect(3);
   let router = new TestRouter();
-  let parent = new ResolvedRouteInfo(router, 'parent', [], {}, createHandler('parent'));
-  let child = new ResolvedRouteInfo(router, 'child', [], {}, createHandler('child'));
-  let grandChild = new ResolvedRouteInfo(router, 'grandChild', [], {}, createHandler('grandChild'));
+  let parent = new ResolvedRouteInfo(
+    router,
+    'parent',
+    [],
+    {},
+    managementFor(createHandler('parent'))
+  );
+  let child = new ResolvedRouteInfo(router, 'child', [], {}, managementFor(createHandler('child')));
+  let grandChild = new ResolvedRouteInfo(
+    router,
+    'grandChild',
+    [],
+    {},
+    managementFor(createHandler('grandChild'))
+  );
   let [root] = toReadOnlyRouteInfo([parent, child, grandChild]);
 
   enum RouteInfoNames {
@@ -219,9 +244,21 @@ QUnit.test('RouteInfo.find', function (assert) {
 QUnit.test('RouteInfo.find returns matched', function (assert) {
   assert.expect(3);
   let router = new TestRouter();
-  let parent = new ResolvedRouteInfo(router, 'parent', [], {}, createHandler('parent'));
-  let child = new ResolvedRouteInfo(router, 'child', [], {}, createHandler('child'));
-  let grandChild = new ResolvedRouteInfo(router, 'grandChild', [], {}, createHandler('grandChild'));
+  let parent = new ResolvedRouteInfo(
+    router,
+    'parent',
+    [],
+    {},
+    managementFor(createHandler('parent'))
+  );
+  let child = new ResolvedRouteInfo(router, 'child', [], {}, managementFor(createHandler('child')));
+  let grandChild = new ResolvedRouteInfo(
+    router,
+    'grandChild',
+    [],
+    {},
+    managementFor(createHandler('grandChild'))
+  );
   let [root] = toReadOnlyRouteInfo([parent, child, grandChild]);
 
   enum RouteInfoNames {
@@ -254,7 +291,7 @@ function createNonGatingHandler(
   };
 
   let handler = createHandler(name);
-  associateRouteManagement(handler, manager as never, { route: handler, invokable: undefined });
+  associateManagement(handler, manager as never, { route: handler, invokable: undefined });
   return handler;
 }
 
@@ -272,7 +309,13 @@ QUnit.test(
     });
 
     let handler = createNonGatingHandler('async-parent', () => enterPromise);
-    let routeInfo = new UnresolvedRouteInfoByParam(router, 'async-parent', [], {}, handler);
+    let routeInfo = new UnresolvedRouteInfoByParam(
+      router,
+      'async-parent',
+      [],
+      {},
+      managementFor(handler)
+    );
 
     let transition = { isAborted: false } as unknown as InternalTransition;
 
@@ -313,7 +356,13 @@ QUnit.test('route resolution waits for getInvokable', async function (assert) {
     () => resolve(model),
     () => invokablePromise
   );
-  let routeInfo = new UnresolvedRouteInfoByParam(router, 'async-component', [], {}, handler);
+  let routeInfo = new UnresolvedRouteInfoByParam(
+    router,
+    'async-component',
+    [],
+    {},
+    managementFor(handler)
+  );
   let transition = {
     isAborted: false,
     router,
@@ -357,7 +406,13 @@ QUnit.test('getAncestorPromise resolves with the ancestor enter result', async f
     captured = args.getAncestorPromise;
     return resolve(undefined);
   });
-  let childInfo = new UnresolvedRouteInfoByParam(router, 'parent.child', [], {}, handler);
+  let childInfo = new UnresolvedRouteInfoByParam(
+    router,
+    'parent.child',
+    [],
+    {},
+    managementFor(handler)
+  );
 
   let transition = { isAborted: false } as unknown as InternalTransition;
   // Seed the transition state so getAncestorPromise can find the ancestor.
@@ -377,7 +432,7 @@ QUnit.test(
     let router = new TestRouter();
     let model = { id: 'the-model' };
     let handler = createNonGatingHandler('thing', () => resolve(model));
-    let routeInfo = new UnresolvedRouteInfoByParam(router, 'thing', [], {}, handler);
+    let routeInfo = new UnresolvedRouteInfoByParam(router, 'thing', [], {}, managementFor(handler));
 
     assert.false('context' in routeInfo, 'a fresh by-param route info has no own context');
 
@@ -420,7 +475,13 @@ QUnit.test('getAncestorPromise only matches true ancestors', async function (ass
     captured = args.getAncestorPromise;
     return resolve(undefined);
   });
-  let childInfo = new UnresolvedRouteInfoByParam(router, 'parent.child', [], {}, handler);
+  let childInfo = new UnresolvedRouteInfoByParam(
+    router,
+    'parent.child',
+    [],
+    {},
+    managementFor(handler)
+  );
 
   let transition = { isAborted: false } as unknown as InternalTransition;
   // Seed the transition state with the child itself in place, so the walk

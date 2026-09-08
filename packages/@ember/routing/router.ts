@@ -7,7 +7,7 @@ import { set } from '@ember/-internals/metal/lib/property_set';
 import type Owner from '@ember/owner';
 import { getOwner } from '@ember/owner';
 import { getRouteManager } from '@ember/-internals/routing/route-managers/registry';
-import { ClassicRouteBucket } from '@ember/-internals/routing/route-managers/classic/bucket';
+import { getRouteManagement } from '@ember/-internals/routing/route-managers/management';
 import type { RouteManager } from '@ember/-internals/routing/route-managers/api';
 import type { RouteManagement } from 'router_js';
 import { hasClassicInterop } from '@ember/-internals/routing/route-managers/api';
@@ -52,12 +52,7 @@ import type {
   TransitionError,
   TransitionState,
 } from 'router_js';
-import Router, {
-  associateRouteManagement,
-  getRouteManagement,
-  logAbort,
-  STATE_SYMBOL,
-} from 'router_js';
+import Router, { logAbort, STATE_SYMBOL } from 'router_js';
 import EngineInstance from '@ember/engine/instance';
 import type { QueryParams } from 'route-recognizer';
 import type { AnyFn, MethodNamesOf, OmitFirst } from '@ember/-internals/utility-types';
@@ -383,7 +378,7 @@ class EmberRouter extends EmberObject {
 
     @private
    */
-  getRoute(name: string): unknown {
+  getRoute(name: string): RouteManagement | undefined {
     // Guard against a stringified `undefined` route name: without this, the
     // auto-generation path below would happily register and hand back a junk
     // `route:undefined`.
@@ -466,26 +461,11 @@ class EmberRouter extends EmberObject {
       ownerRouteManagement.set(routeName, managed);
     }
 
-    const route =
-      managed.bucket instanceof ClassicRouteBucket ? managed.bucket.route : managed.bucket;
-
-    // Register the handle → {manager, bucket} association that router_js
-    // dispatches lifecycle hooks through. Owned by the router so managers
-    // don't have to stamp anything onto their route objects. Registered on
-    // every call (cheap WeakMap set) because a manager may instantiate its
-    // route lazily rather than at `createRoute` time.
-    if (typeof route === 'object' && route !== null) {
-      associateRouteManagement(route, managed.manager, managed.bucket);
-    }
-
     if (hasClassicInterop(managed.manager)) {
-      this.#inaccessibleByURL.set(
-        name,
-        Boolean((route as { inaccessibleByURL?: boolean } | undefined)?.inaccessibleByURL)
-      );
+      this.#inaccessibleByURL.set(name, managed.manager.isInaccessibleByURL(managed.bucket));
     }
 
-    return route;
+    return managed;
   }
 
   isRouteInaccessibleByURL(name: string): boolean {
@@ -503,13 +483,9 @@ class EmberRouter extends EmberObject {
         // All route instantiation, manager dispatch, and engine-owner
         // resolution lives on EmberRouter.getRoute. This wrapper just
         // delegates.
-        const route = router.getRoute(name);
-        assert(`Expected to find route '${name}'`, route !== undefined);
-        // SAFETY: the manager contract types routes as `unknown`; this is the
-        // one boundary where they enter router_js's generic machinery. All
-        // manager/bucket dispatch goes through the routeInfo association, so
-        // nothing downstream depends on the route's actual shape.
-        return route as object;
+        const management = router.getRoute(name);
+        assert(`Expected to find route '${name}'`, management !== undefined);
+        return management;
       }
 
       isRouteInaccessibleByURL(name: string) {
@@ -1693,7 +1669,7 @@ function dispatchRouteInfoFor(
   }
 
   let i = routeInfos.length - 1;
-  while (i >= 0 && !routeInfos[i]?.route) {
+  while (i >= 0 && !routeInfos[i]?.hasResolvedManagement) {
     i--;
   }
 

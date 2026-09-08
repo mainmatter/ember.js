@@ -35,6 +35,7 @@ import type {
 import { routeCapabilities } from '../api';
 import type { QueryParamMeta } from '@ember/routing/route';
 import { ClassicRouteBucket } from './bucket';
+import { associateRouteManagement } from '../management';
 import {
   finalizeQueryParamChange as finalizeClassicQueryParamChange,
   queryParamsDidChange as classicQueryParamsDidChange,
@@ -71,7 +72,18 @@ export class ClassicRouteManager implements RouteManagerWithClassicInterop<Class
     const route = this.#owner.lookup(`route:${args.name}`) as Route;
     route._setRouteName(args.name);
 
-    return new ClassicRouteBucket(route);
+    const bucket = new ClassicRouteBucket(route);
+    associateRouteManagement(route, this, bucket);
+
+    return bucket;
+  }
+
+  getTransitionResult(bucket: ClassicRouteBucket): unknown {
+    return bucket.route;
+  }
+
+  isInaccessibleByURL(bucket: ClassicRouteBucket): boolean {
+    return Boolean((bucket.route as { inaccessibleByURL?: boolean }).inaccessibleByURL);
   }
 
   getDestroyable(_bucket: ClassicRouteBucket): object | null {

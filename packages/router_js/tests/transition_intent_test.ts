@@ -1,7 +1,13 @@
 import NamedTransitionIntent from '../lib/transition-intent/named-transition-intent';
 import URLTransitionIntent from '../lib/transition-intent/url-transition-intent';
 import TransitionState from '../lib/transition-state';
-import { createHandler, TestRouter } from './test_helpers';
+import {
+  createHandler,
+  managementFor,
+  routeOf,
+  routeOfManagement,
+  TestRouter,
+} from './test_helpers';
 
 import type { default as Router } from '../index';
 import type { Dict } from '../lib/core';
@@ -20,14 +26,16 @@ let scenarios = [
     name: 'Sync Get Handler',
     async: false,
     getHandler: function (name: string) {
-      return handlers[name] || (handlers[name] = createHandler(name));
+      return managementFor(handlers[name] || (handlers[name] = createHandler(name)));
     },
   },
   {
     name: 'Async Get Handler',
     async: true,
     getHandler: function (name: string) {
-      return Promise.resolve(handlers[name] || (handlers[name] = createHandler(name)));
+      return Promise.resolve(
+        managementFor(handlers[name] || (handlers[name] = createHandler(name)))
+      );
     },
   },
 ];
@@ -45,11 +53,11 @@ scenarios.forEach(function (scenario) {
   // Returns a promise during async scenarios to wait until the handler is ready.
   function assertHandlerEquals(assert: Assert, handlerInfo: InternalRouteInfo, expected: object) {
     if (!scenario.async) {
-      return assert.equal(handlerInfo.route, expected);
+      return assert.equal(routeOf(handlerInfo), expected);
     } else {
-      assert.equal(handlerInfo.route, undefined);
-      return handlerInfo.routePromise.then(function (handler) {
-        assert.equal(handler, expected);
+      assert.equal(routeOf(handlerInfo), undefined);
+      return handlerInfo.managementPromise.then(function (management) {
+        assert.equal(routeOfManagement(management), expected);
       });
     }
   }
@@ -150,7 +158,7 @@ scenarios.forEach(function (scenario) {
       'foo',
       [],
       {},
-      handlers['foo']
+      managementFor(handlers['foo']!)
     );
 
     // This single unresolved handler info will be preserved
@@ -180,7 +188,13 @@ scenarios.forEach(function (scenario) {
   QUnit.test('URLTransitionIntent applied to an already-resolved handlerInfo', function (assert) {
     let state = new TransitionState();
 
-    let startingHandlerInfo = new ResolvedRouteInfo(router, 'foo', [], {}, handlers['foo']!);
+    let startingHandlerInfo = new ResolvedRouteInfo(
+      router,
+      'foo',
+      [],
+      {},
+      managementFor(handlers['foo']!)
+    );
 
     state.routeInfos = [startingHandlerInfo];
 
@@ -212,7 +226,7 @@ scenarios.forEach(function (scenario) {
         'articles',
         [],
         { article_id: 'some-other-id' },
-        createHandler('articles'),
+        managementFor(createHandler('articles')),
         article
       );
 
@@ -242,7 +256,13 @@ scenarios.forEach(function (scenario) {
     function (assert) {
       let state = new TransitionState();
 
-      let startingHandlerInfo = new ResolvedRouteInfo(router, 'alex', [], {}, handlers['foo']!);
+      let startingHandlerInfo = new ResolvedRouteInfo(
+        router,
+        'alex',
+        [],
+        {},
+        managementFor(handlers['foo']!)
+      );
 
       state.routeInfos = [startingHandlerInfo];
 
@@ -277,7 +297,7 @@ scenarios.forEach(function (scenario) {
         'articles',
         [],
         { article_id: 'some-other-id' },
-        createHandler('articles'),
+        managementFor(createHandler('articles')),
         article
       );
 

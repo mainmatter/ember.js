@@ -52,14 +52,12 @@ export default class URLTransitionIntent extends TransitionIntent {
         result.params
       );
 
-      let route = newRouteInfo.route;
-
-      if (route) {
+      if (newRouteInfo.management !== undefined) {
         checkAccessibility(newRouteInfo);
       } else {
-        newRouteInfo.routePromise = newRouteInfo.routePromise.then((handler) => {
+        newRouteInfo.managementPromise = newRouteInfo.managementPromise.then((management) => {
           checkAccessibility(newRouteInfo);
-          return handler;
+          return management;
         });
       }
 

@@ -5,20 +5,28 @@ import type Router from '../index';
 import type { Dict, Maybe } from '../lib/core';
 import type RouteInfo from '../lib/route-info';
 import { Promise } from 'rsvp';
-import { createHandler, TestRouter, trigger, ignoreTransitionError } from './test_helpers';
+import {
+  createHandler,
+  managementFor,
+  TestRouter,
+  trigger,
+  ignoreTransitionError,
+} from './test_helpers';
 
 let router: Router, handlers: Dict<object>, expectedUrl: Maybe<string>;
 let scenarios = [
   {
     name: 'Sync Get Handler',
     getHandler: function (name: string) {
-      return handlers[name] || (handlers[name] = createHandler('empty'));
+      return managementFor(handlers[name] || (handlers[name] = createHandler('empty')));
     },
   },
   {
     name: 'Async Get Handler',
     getHandler: function (name: string) {
-      return Promise.resolve(handlers[name] || (handlers[name] = createHandler('empty')));
+      return Promise.resolve(
+        managementFor(handlers[name] || (handlers[name] = createHandler('empty')))
+      );
     },
   },
 ];

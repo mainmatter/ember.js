@@ -8,7 +8,7 @@ import { isTransition, PARAMS_SYMBOL, QUERY_PARAMS_SYMBOL, STATE_SYMBOL } from '
 import { isParam, isPromise, merge } from './utils';
 import { throwIfAborted } from './transition-aborted-error';
 import type { EnterState, RouteManagement, RouteManager, RouteStateBucket } from './route-manager';
-import { getRouteManagement, hasClassicInterop, invokableFor } from './route-manager';
+import { hasClassicInterop, invokableFor } from './route-manager';
 
 export type IModel = {} & {
   id?: string | number;
@@ -195,9 +195,8 @@ function attachMetadata(info: InternalRouteInfo, routeInfo: RouteInfo) {
 }
 
 export default class InternalRouteInfo {
-  private _routePromise?: Promise<object> = undefined;
-  private _route?: Option<object> = null;
-  private _management?: RouteManagement = undefined;
+  private _managementPromise?: Promise<RouteManagement> = undefined;
+  private _management?: Option<RouteManagement> = null;
   protected router: Router;
   declare paramNames: string[];
   declare name: string;
@@ -209,12 +208,12 @@ export default class InternalRouteInfo {
   private beginPromise?: Promise<unknown> = undefined;
   private beginTransition?: InternalTransition = undefined;
 
-  constructor(router: Router, name: string, paramNames: string[], route?: object) {
+  constructor(router: Router, name: string, paramNames: string[], management?: RouteManagement) {
     this.name = name;
     this.paramNames = paramNames;
     this.router = router;
-    if (route) {
-      this._processRoute(route);
+    if (management) {
+      this._processManagement(management);
     }
   }
 
@@ -235,7 +234,7 @@ export default class InternalRouteInfo {
         return Promise.resolve(undefined);
       } else if (!eagerManager) {
         // LinkTo may load routes later than direct visit navigation.
-        return Promise.resolve(this.routePromise).then(() => {
+        return Promise.resolve(this.managementPromise).then(() => {
           const loadedManager = this._management?.manager;
 
           if (loadedManager && hasClassicInterop(loadedManager)) {
@@ -252,10 +251,10 @@ export default class InternalRouteInfo {
     }
 
     this.beginTransition = transition;
-    this.beginPromise = Promise.resolve(this.routePromise)
-      .then((route: object) => {
+    this.beginPromise = Promise.resolve(this.managementPromise)
+      .then((management: RouteManagement) => {
         throwIfAborted(transition);
-        return route;
+        return management;
       })
       .then(() => {
         const { manager, bucket } = this;
@@ -349,7 +348,7 @@ export default class InternalRouteInfo {
       this.name,
       this.paramNames,
       params,
-      this.route!,
+      this.management!,
       context,
       this.enterPromise
     );
@@ -381,26 +380,22 @@ export default class InternalRouteInfo {
     );
   }
 
-  get route(): object | undefined {
-    // _route could be set to either a route object or undefined, so we
+  get management(): RouteManagement | undefined {
+    // _management could be set to either a management pair or undefined, so we
     // compare against null to know when it's been set
-    if (this._route !== null) {
-      return this._route;
+    if (this._management !== null) {
+      return this._management;
     }
 
-    return this.fetchRoute();
+    return this.fetchManagement();
   }
 
-  // Reading before the route has loaded forces the load, matching `route`.
-  private get management(): RouteManagement | undefined {
-    if (this._management === undefined) {
-      let route = this.route;
-      if (route !== undefined) {
-        this._management = getRouteManagement(route);
-      }
-    }
+  set management(management: RouteManagement | undefined) {
+    this._management = management;
+  }
 
-    return this._management;
+  get hasResolvedManagement(): boolean {
+    return this._management !== null && this._management !== undefined;
   }
 
   get manager(): RouteManager | undefined {
@@ -415,22 +410,18 @@ export default class InternalRouteInfo {
     return this.router.isRouteInaccessibleByURL(this.name);
   }
 
-  set route(route: object | undefined) {
-    this._route = route;
-  }
-
-  get routePromise(): Promise<object> {
-    if (this._routePromise) {
-      return this._routePromise;
+  get managementPromise(): Promise<RouteManagement> {
+    if (this._managementPromise) {
+      return this._managementPromise;
     }
 
-    this.fetchRoute();
+    this.fetchManagement();
 
-    return this._routePromise!;
+    return this._managementPromise!;
   }
 
-  set routePromise(routePromise: Promise<object>) {
-    this._routePromise = routePromise;
+  set managementPromise(managementPromise: Promise<RouteManagement>) {
+    this._managementPromise = managementPromise;
   }
 
   protected log(transition: InternalTransition, message: string) {
@@ -439,36 +430,34 @@ export default class InternalRouteInfo {
     }
   }
 
-  private updateRoute(route: object) {
-    this._management = getRouteManagement(route);
-    return (this.route = route);
-  }
-
   private stashResolvedModel(transition: InternalTransition, resolvedModel: unknown | undefined) {
     transition.resolvedModels = transition.resolvedModels || {};
     // SAFETY: It's unfortunate that we have to do this cast. It should be safe though.
     transition.resolvedModels[this.name] = resolvedModel;
   }
 
-  private fetchRoute() {
-    let route = this.router.getRoute(this.name);
-    return this._processRoute(route);
+  private fetchManagement() {
+    let management = this.router.getRoute(this.name);
+    return this._processManagement(management);
   }
 
-  private _processRoute(route: object | Promise<object>) {
-    // Setup a routePromise so that we can wait for asynchronously loaded routes
-    this.routePromise = Promise.resolve(route);
+  private _processManagement(management: RouteManagement | Promise<RouteManagement>) {
+    // Setup a managementPromise so that we can wait for asynchronously loaded routes
+    this.managementPromise = Promise.resolve(management);
 
-    // Wait until the 'route' property has been updated when chaining to a route
-    // that is a promise
-    if (isPromise(route)) {
-      this.routePromise = this.routePromise.then((r) => {
-        return this.updateRoute(r);
+    // Wait until the 'management' property has been updated when chaining to a
+    // route that is a promise
+    if (isPromise(management)) {
+      this.managementPromise = this.managementPromise.then((m) => {
+        this.management = m;
+        return m;
       });
-      // set to undefined to avoid recursive loop in the route getter
-      return (this.route = undefined);
-    } else if (route) {
-      return this.updateRoute(route);
+      // set to undefined to avoid recursive loop in the management getter
+      this.management = undefined;
+      return undefined;
+    } else if (management) {
+      this.management = management;
+      return management;
     }
 
     return undefined;
@@ -483,11 +472,11 @@ export class ResolvedRouteInfo extends InternalRouteInfo {
     name: string,
     paramNames: string[],
     params: Dict<unknown> | undefined,
-    route: object,
+    management: RouteManagement,
     context?: unknown,
     enterPromise?: globalThis.Promise<unknown>
   ) {
-    super(router, name, paramNames, route);
+    super(router, name, paramNames, management);
     this.params = params;
     this.isResolved = true;
     this.context = context;
@@ -510,9 +499,9 @@ export class UnresolvedRouteInfoByParam extends InternalRouteInfo {
     name: string,
     paramNames: string[],
     params: Dict<unknown> | undefined,
-    route?: object
+    management?: RouteManagement
   ) {
-    super(router, name, paramNames, route);
+    super(router, name, paramNames, management);
     if (params) {
       this.params = params;
     }

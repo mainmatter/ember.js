@@ -159,13 +159,13 @@ export default class NamedTransitionIntent extends TransitionIntent {
     for (let i = invalidateIndex, l = handlerInfos.length; i < l; ++i) {
       let handlerInfo = handlerInfos[i]!;
       if (handlerInfo.isResolved) {
-        let { name, params, route, paramNames } = handlerInfos[i]!;
+        let { name, params, management, paramNames } = handlerInfos[i]!;
         handlerInfos[i] = new UnresolvedRouteInfoByParam(
           this.router,
           name,
           paramNames,
           params,
-          route
+          management
         );
       }
     }

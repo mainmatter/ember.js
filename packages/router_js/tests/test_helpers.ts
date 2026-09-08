@@ -1,5 +1,5 @@
-import type { RouteManager, RouteStateBucket, Transition } from '../index';
-import Router, { associateRouteManagement } from '../index';
+import type { RouteManagement, RouteManager, RouteStateBucket, Transition } from '../index';
+import Router from '../index';
 import type { Dict } from '../lib/core';
 import type { IModel } from '../lib/route-info';
 import RouteInfo, { UnresolvedRouteInfoByParam } from '../lib/route-info';
@@ -61,10 +61,36 @@ function shouldNotHappen(assert: Assert, _message?: string) {
   };
 }
 
+const ROUTE_MANAGEMENT = new WeakMap<object, RouteManagement>();
+
+export function associateManagement(
+  route: object,
+  manager: RouteManager,
+  bucket: RouteStateBucket
+): void {
+  ROUTE_MANAGEMENT.set(route, { manager, bucket });
+}
+
+export function managementFor(route: object): RouteManagement {
+  let management = ROUTE_MANAGEMENT.get(route);
+  if (management === undefined) {
+    throw new Error('Expected the test route to have associated management');
+  }
+  return management;
+}
+
+export function routeOfManagement(management: RouteManagement): ClassicRoute {
+  return (management.bucket as { route: ClassicRoute }).route;
+}
+
+export function routeOf(routeInfo: RouteInfo): ClassicRoute | undefined {
+  return (routeInfo.bucket as { route?: ClassicRoute } | undefined)?.route;
+}
+
 export function isExiting(route: ClassicRoute | string, routeInfos: RouteInfo[]) {
   for (let i = 0, len = routeInfos.length; i < len; ++i) {
     let routeInfo = routeInfos[i];
-    if (routeInfo!.name === route || routeInfo!.route === route) {
+    if (routeInfo!.name === route || routeOf(routeInfo!) === route) {
       return false;
     }
   }
@@ -105,6 +131,7 @@ interface NavigationArgs {
 interface RouteManagerLike {
   capabilities: RouteCapabilities;
   createRoute(definition: any, args: { name: string }): TestRouteBucket;
+  getTransitionResult(bucket: TestRouteBucket): unknown;
   willEnter(bucket: TestRouteBucket, args: NavigationArgs): void;
   enter(bucket: TestRouteBucket, args: NavigationArgs): Promise<unknown>;
   didEnter(bucket: TestRouteBucket, args: NavigationArgs & { enter?: boolean }): void;
@@ -153,15 +180,16 @@ class TestRouteManager implements RouteManagerLike {
 
   createRoute(handler: ClassicRoute, args: { name: string }): TestRouteBucket {
     const bucket = new TestRouteBucket(handler, args);
-    // Register the association the router_js dispatch path reads. The real
-    // framework router does this in EmberRouter.getRoute; the test manager
-    // has no framework router above it, so it registers directly.
-    associateRouteManagement(
+    associateManagement(
       handler,
       this as unknown as RouteManager,
       bucket as unknown as RouteStateBucket
     );
     return bucket;
+  }
+
+  getTransitionResult(bucket: TestRouteBucket): unknown {
+    return bucket.route;
   }
 
   willEnter(_bucket: TestRouteBucket, _args: NavigationArgs): void {}
@@ -171,10 +199,7 @@ class TestRouteManager implements RouteManagerLike {
     // `to` is the public RouteInfo, which has no getModel. Classic-interop
     // managers dispatch internal operations through internalRouteInfo.
     const routeInfo = args.internalRouteInfo ?? args.to;
-    // routeInfo.route is the authoritative reference for this transition.
-    // Tests sometimes attach a handler to the routeInfo via prototype
-    // assignment that differs from the one the bucket was created with.
-    const route = routeInfo?.route ?? bucket.route;
+    const route = bucket.route;
 
     if (transition && typeof transition.trigger === 'function') {
       transition.trigger(true, 'willResolveModel', transition, route);
@@ -335,8 +360,8 @@ export class TestRouter extends Router {
       return error.error;
     }
   }
-  getRoute(name: string): any {
-    return createHandler(name);
+  getRoute(name: string): RouteManagement | Promise<RouteManagement> {
+    return managementFor(createHandler(name));
   }
   getSerializer(_name: string): any {
     return () => {};
@@ -365,8 +390,8 @@ export class TestRouter extends Router {
 
 export function createHandlerInfo(name: string, options: Dict<unknown> = {}): RouteInfo {
   class Stub extends RouteInfo {
-    constructor(name: string, router: Router, handler?: ClassicRoute) {
-      super(router, name, [], handler);
+    constructor(name: string, router: Router, management?: RouteManagement) {
+      super(router, name, [], management);
     }
     getModel(_transition: Transition) {
       return {} as any;
@@ -380,7 +405,7 @@ export function createHandlerInfo(name: string, options: Dict<unknown> = {}): Ro
   delete options['handler'];
 
   Object.assign(Stub.prototype, options);
-  let stub = new Stub(name, new TestRouter(), handler);
+  let stub = new Stub(name, new TestRouter(), managementFor(handler));
   return stub;
 }
 
@@ -401,13 +426,13 @@ export function trigger(
 
   for (let i = handlerInfos.length - 1; i >= 0; i--) {
     let currentHandlerInfo = handlerInfos[i]!,
-      currentHandler = currentHandlerInfo.route as ClassicRoute | undefined;
+      currentHandler = routeOf(currentHandlerInfo);
 
     // If there is no handler, it means the handler hasn't resolved yet which
     // means that we should trigger the event later when the handler is available
     if (!currentHandler) {
-      currentHandlerInfo.routePromise!.then(function (route: object) {
-        let resolvedHandler = route as ClassicRoute;
+      currentHandlerInfo.managementPromise!.then(function (management: RouteManagement) {
+        let resolvedHandler = routeOfManagement(management);
         if (resolvedHandler.events?.[name]) {
           resolvedHandler.events[name].apply(resolvedHandler, args);
         }

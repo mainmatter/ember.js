@@ -426,6 +426,15 @@ interface RenderCacheEntry {
   glimmerResult: GlimmerRenderResult | undefined;
 }
 
+// Cursor descriptor isn't a stable enough reference.
+// Cursor fails during application teardown
+type RendererCacheKey = Element | SimpleElement;
+
+const isDOMElement = (into: IntoTarget): into is Element => 'innerHTML' in into;
+
+const cacheKey = (into: IntoTarget): RendererCacheKey =>
+  'element' in into ? (into as Cursor).element : (into as RendererCacheKey);
+
 function intoTarget(into: IntoTarget): Cursor {
   if ('element' in into) {
     return into;
@@ -462,17 +471,11 @@ export function renderComponent(
     env,
     into,
     args,
-    appendIntoTarget = false,
   }: {
     /**
      * The element to render the component in to.
      */
     into: IntoTarget;
-
-    /**
-     * Appends `into` without clearing the target first. Mimics the `appendTo` behavior for classic components.
-     */
-    appendIntoTarget?: boolean;
 
     /**
      * Optional owner. Defaults to `{}`, can be any object, but will need to implement the [Owner](https://api.emberjs.com/ember/release/classes/Owner) API for components within this render tree to access services.
@@ -533,14 +536,15 @@ export function renderComponent(
    *
    * NOTE: destruction is async
    */
-  let existing = RENDER_CACHE.get(into);
+  let key = cacheKey(into);
+  let existing = RENDER_CACHE.get(key);
   existing?.result.destroy();
   /**
    * We can only replace the inner HTML the first time.
    * Because destruction is async, it won't be safe to
    * do this again, and we'll have to rely on the above destroy.
    */
-  if (!(appendIntoTarget || existing) && into instanceof Element) {
+  if (!existing && isDOMElement(into)) {
     into.innerHTML = '';
   }
 
@@ -558,10 +562,8 @@ export function renderComponent(
    */
   let renderTarget: IntoTarget = into;
   if (existing?.glimmerResult) {
-    let parentElement =
-      into instanceof Element ? (into as unknown as SimpleElement) : (into as Cursor).element;
     let firstNode = existing.glimmerResult.firstNode();
-    renderTarget = { element: parentElement, nextSibling: firstNode };
+    renderTarget = { element: key as SimpleElement, nextSibling: firstNode };
   }
 
   let innerResult = renderer.render(component, { into: renderTarget, args }).result;
@@ -569,8 +571,8 @@ export function renderComponent(
   if (innerResult) {
     associateDestroyableChild(owner, innerResult);
     registerDestructor(innerResult, () => {
-      if (RENDER_CACHE.get(into)?.glimmerResult === innerResult) {
-        RENDER_CACHE.delete(into);
+      if (RENDER_CACHE.get(key)?.glimmerResult === innerResult) {
+        RENDER_CACHE.delete(key);
       }
     });
   }
@@ -583,12 +585,12 @@ export function renderComponent(
     },
   };
 
-  RENDER_CACHE.set(into, { result, glimmerResult: innerResult });
+  RENDER_CACHE.set(key, { result, glimmerResult: innerResult });
 
   return result;
 }
 
-const RENDER_CACHE = new WeakMap<IntoTarget, RenderCacheEntry>();
+const RENDER_CACHE = new WeakMap<RendererCacheKey, RenderCacheEntry>();
 const RENDERER_CACHE = new WeakMap<object, BaseRenderer>();
 
 /**

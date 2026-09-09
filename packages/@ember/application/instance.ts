@@ -144,7 +144,10 @@ class ApplicationInstance extends EngineInstance {
 
   renderRootComponent(component: object) {
     setRenderer(this, this.lookup('renderer:-dom') as BaseRenderer);
-    renderComponent(component, { into: this.rootElement!, owner: this, appendIntoTarget: true });
+    renderComponent(component, {
+      into: { element: this.rootElement as SimpleElement, nextSibling: null },
+      owner: this,
+    });
   }
 
   /**

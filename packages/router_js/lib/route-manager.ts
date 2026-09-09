@@ -159,7 +159,7 @@ export interface AsyncNavigationState {
  */
 export interface ClassicInteropArgs {
   transition: Transition;
-  internalRouteInfo: InternalRouteInfo;
+  internalRouteInfo: InternalRouteInfo<any>;
 }
 
 // -- Hook argument shapes -----------------------------------------------------
@@ -362,7 +362,11 @@ export interface RouteManagerWithClassicInterop<
     `model`-scoped query params resolve to the right path. Called by the
     router while walking the active route hierarchy.
    */
-  stashNames(bucket: Bucket, routeInfo: InternalRouteInfo, dynamicParent: InternalRouteInfo): void;
+  stashNames(
+    bucket: Bucket,
+    routeInfo: InternalRouteInfo<any>,
+    dynamicParent: InternalRouteInfo<any>
+  ): void;
 
   /**
     Serializes a single query-param value for the URL. Mirrors the classic
@@ -392,7 +396,7 @@ export interface RouteManagerWithClassicInterop<
    */
   serializeContext(
     bucket: Bucket,
-    routeInfo: InternalRouteInfo,
+    routeInfo: InternalRouteInfo<any>,
     value: unknown
   ): Record<string, unknown> | undefined;
 

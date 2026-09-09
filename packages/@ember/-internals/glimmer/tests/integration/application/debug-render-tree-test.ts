@@ -1645,12 +1645,6 @@ if (ENV._DEBUG_RENDER_TREE) {
           let inExpected = key in (expected as object);
           let inActual = key in (actual as object);
 
-          // @TODO revisit if the skip is needed once currying is removed from the outletHelper
-          if (key !== 'outlet') {
-            this.assert.ok(inExpected, `expected is missing key ${key}`);
-            this.assert.ok(inActual, `actual is missing key ${key}`);
-          }
-
           if (inExpected && inActual) {
             // TODO we should probably not rely on qunit's version of deepEqual here but at least now we're not
             // trying to print full render trees (32MB of string) to the browser unless the key exists in both

@@ -77,7 +77,7 @@ export function getActiveTargetName(router: Router): string {
 
 export function stashParamNames(
   router: EmberRouter,
-  routeInfos: Array<ExtendedInternalRouteInfo> & { _namesStashed?: boolean }
+  routeInfos: Array<ExtendedInternalRouteInfo<Route>> & { _namesStashed?: boolean }
 ): void {
   if (routeInfos['_namesStashed']) {
     return;

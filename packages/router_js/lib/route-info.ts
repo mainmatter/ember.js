@@ -37,8 +37,8 @@ type RouteInfosKey = InternalRouteInfo;
 
 let ROUTE_INFOS = new WeakMap<RouteInfosKey, RouteInfo | RouteInfoWithAttributes>();
 
-export function toReadOnlyRouteInfo(
-  routeInfos: InternalRouteInfo[],
+export function toReadOnlyRouteInfo<R = unknown>(
+  routeInfos: InternalRouteInfo<R>[],
   queryParams: Dict<unknown> = {},
   options: {
     includeAttributes?: boolean;
@@ -171,7 +171,7 @@ function createRouteInfoWithAttributes(
   return Object.assign(routeInfo, attributes);
 }
 
-function buildRouteInfoMetadata(info: InternalRouteInfo) {
+function buildRouteInfoMetadata<R>(info: InternalRouteInfo<R>) {
   let { manager, bucket } = info;
   if (manager !== undefined && hasClassicInterop(manager) && bucket !== undefined) {
     return manager.getRouteInfoMetadata(bucket);
@@ -180,7 +180,7 @@ function buildRouteInfoMetadata(info: InternalRouteInfo) {
   return null;
 }
 
-function attachMetadata(info: InternalRouteInfo, routeInfo: RouteInfo) {
+function attachMetadata<R>(info: InternalRouteInfo<R>, routeInfo: RouteInfo) {
   let metadata = {
     get metadata() {
       return buildRouteInfoMetadata(info);
@@ -194,21 +194,21 @@ function attachMetadata(info: InternalRouteInfo, routeInfo: RouteInfo) {
   return Object.assign(routeInfo, metadata);
 }
 
-export default class InternalRouteInfo {
+export default class InternalRouteInfo<R = unknown> {
   private _managementPromise?: Promise<RouteManagement> = undefined;
   private _management?: Option<RouteManagement> = null;
-  protected router: Router;
+  protected router: Router<R>;
   declare paramNames: string[];
   declare name: string;
   params: Dict<unknown> | undefined = {};
   declare queryParams?: Dict<unknown>;
-  declare context?: unknown | PromiseLike<unknown> | undefined;
+  declare context?: R | PromiseLike<R> | undefined;
   isResolved = false;
   enterPromise?: globalThis.Promise<unknown> = undefined;
   private beginPromise?: Promise<unknown> = undefined;
-  private beginTransition?: InternalTransition = undefined;
+  private beginTransition?: InternalTransition<R> = undefined;
 
-  constructor(router: Router, name: string, paramNames: string[], management?: RouteManagement) {
+  constructor(router: Router<R>, name: string, paramNames: string[], management?: RouteManagement) {
     this.name = name;
     this.paramNames = paramNames;
     this.router = router;
@@ -217,15 +217,15 @@ export default class InternalRouteInfo {
     }
   }
 
-  getModel(_transition: InternalTransition) {
+  getModel(_transition: InternalTransition<R>): Promise<R | undefined> {
     return Promise.resolve(this.context);
   }
 
-  serialize(_context?: unknown | null): Dict<unknown> | undefined {
+  serialize(_context?: R | null): Dict<unknown> | undefined {
     return this.params || {};
   }
 
-  beginEnter(transition: InternalTransition, eager = false): Promise<unknown> {
+  beginEnter(transition: InternalTransition<R>, eager = false): Promise<unknown> {
     if (eager) {
       const eagerManager = this._management?.manager;
 
@@ -314,18 +314,18 @@ export default class InternalRouteInfo {
     return this.beginPromise;
   }
 
-  resolve(transition: InternalTransition): Promise<ResolvedRouteInfo> {
+  resolve(transition: InternalTransition<R>): Promise<ResolvedRouteInfo<R>> {
     return this.beginEnter(transition).then((enteredContext) => {
       throwIfAborted(transition);
 
-      return this.becomeResolved(transition, enteredContext as unknown | undefined);
+      return this.becomeResolved(transition, enteredContext as R | undefined);
     });
   }
 
   becomeResolved(
-    transition: InternalTransition | null,
-    resolvedContext: unknown | undefined
-  ): ResolvedRouteInfo {
+    transition: InternalTransition<R> | null,
+    resolvedContext: R | undefined
+  ): ResolvedRouteInfo<R> {
     let params = this.serialize(resolvedContext);
 
     if (transition) {
@@ -343,7 +343,7 @@ export default class InternalRouteInfo {
 
     // SAFETY: Since this is just for lookup, it should be safe
     let cached = ROUTE_INFOS.get(this as unknown as InternalRouteInfo);
-    let resolved = new ResolvedRouteInfo(
+    let resolved = new ResolvedRouteInfo<R>(
       this.router,
       this.name,
       this.paramNames,
@@ -361,7 +361,7 @@ export default class InternalRouteInfo {
     return resolved;
   }
 
-  shouldSupersede(routeInfo?: InternalRouteInfo) {
+  shouldSupersede(routeInfo?: InternalRouteInfo<R>) {
     // Prefer this newer routeInfo over `other` if:
     // 1) The other one doesn't exist
     // 2) The names don't match
@@ -424,13 +424,13 @@ export default class InternalRouteInfo {
     this._managementPromise = managementPromise;
   }
 
-  protected log(transition: InternalTransition, message: string) {
+  protected log(transition: InternalTransition<R>, message: string) {
     if (transition.log) {
       transition.log(this.name + ': ' + message);
     }
   }
 
-  private stashResolvedModel(transition: InternalTransition, resolvedModel: unknown | undefined) {
+  private stashResolvedModel(transition: InternalTransition<R>, resolvedModel: R | undefined) {
     transition.resolvedModels = transition.resolvedModels || {};
     // SAFETY: It's unfortunate that we have to do this cast. It should be safe though.
     transition.resolvedModels[this.name] = resolvedModel;
@@ -464,16 +464,16 @@ export default class InternalRouteInfo {
   }
 }
 
-export class ResolvedRouteInfo extends InternalRouteInfo {
+export class ResolvedRouteInfo<R = unknown> extends InternalRouteInfo<R> {
   isResolved: boolean;
-  context: unknown | undefined;
+  context: R | undefined;
   constructor(
-    router: Router,
+    router: Router<R>,
     name: string,
     paramNames: string[],
     params: Dict<unknown> | undefined,
     management: RouteManagement,
-    context?: unknown,
+    context?: R,
     enterPromise?: globalThis.Promise<unknown>
   ) {
     super(router, name, paramNames, management);
@@ -483,7 +483,7 @@ export class ResolvedRouteInfo extends InternalRouteInfo {
     this.enterPromise = enterPromise;
   }
 
-  resolve(transition: InternalTransition): Promise<this> {
+  resolve(transition: InternalTransition<R>): Promise<this> {
     // A ResolvedRouteInfo just resolved with itself.
     if (transition && transition.resolvedModels) {
       transition.resolvedModels[this.name] = this.context;
@@ -492,10 +492,10 @@ export class ResolvedRouteInfo extends InternalRouteInfo {
   }
 }
 
-export class UnresolvedRouteInfoByParam extends InternalRouteInfo {
+export class UnresolvedRouteInfoByParam<R = unknown> extends InternalRouteInfo<R> {
   params: Dict<unknown> = {};
   constructor(
-    router: Router,
+    router: Router<R>,
     name: string,
     paramNames: string[],
     params: Dict<unknown> | undefined,
@@ -507,7 +507,7 @@ export class UnresolvedRouteInfoByParam extends InternalRouteInfo {
     }
   }
 
-  getModel(transition: InternalTransition): Promise<unknown> {
+  getModel(transition: InternalTransition<R>): Promise<R | undefined> {
     let fullParams = this.params;
     if (transition && transition[QUERY_PARAMS_SYMBOL]) {
       fullParams = {};
@@ -515,14 +515,11 @@ export class UnresolvedRouteInfoByParam extends InternalRouteInfo {
       fullParams['queryParams'] = transition[QUERY_PARAMS_SYMBOL];
     }
 
-    let result: unknown | PromiseLike<unknown> | undefined;
+    let result: R | PromiseLike<R> | undefined;
 
     let { manager, bucket } = this;
     if (manager !== undefined && hasClassicInterop(manager) && bucket !== undefined) {
-      result = manager.getContext(bucket, fullParams, transition) as
-        | unknown
-        | PromiseLike<unknown>
-        | undefined;
+      result = manager.getContext(bucket, fullParams, transition) as R | PromiseLike<R> | undefined;
     }
 
     if (result && isTransition(result)) {
@@ -533,20 +530,20 @@ export class UnresolvedRouteInfoByParam extends InternalRouteInfo {
   }
 }
 
-export class UnresolvedRouteInfoByObject extends InternalRouteInfo {
-  serializer?: SerializerFunc<unknown>;
+export class UnresolvedRouteInfoByObject<R = unknown> extends InternalRouteInfo<R> {
+  serializer?: SerializerFunc<R>;
   constructor(
-    router: Router,
+    router: Router<R>,
     name: string,
     paramNames: string[],
-    context: unknown | PromiseLike<unknown> | undefined
+    context: R | PromiseLike<R> | undefined
   ) {
     super(router, name, paramNames);
     this.context = context;
     this.serializer = this.router.getSerializer(name);
   }
 
-  getModel(transition: InternalTransition) {
+  getModel(transition: InternalTransition<R>) {
     if (this.router.log !== undefined) {
       this.router.log(this.name + ': resolving provided model');
     }
@@ -562,13 +559,13 @@ export class UnresolvedRouteInfoByObject extends InternalRouteInfo {
 
     @param {Object} model the model to be serialized for this route
   */
-  serialize(model?: unknown): Dict<unknown> | undefined {
+  serialize(model?: R): Dict<unknown> | undefined {
     let { paramNames, context } = this;
 
     if (!model) {
       // SAFETY: By the time we serialize, we expect to be resolved.
       // This may not be an entirely safe assumption though no tests fail.
-      model = context as unknown;
+      model = context as R;
     }
 
     let object: Dict<unknown> = {};

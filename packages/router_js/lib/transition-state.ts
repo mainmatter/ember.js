@@ -12,7 +12,11 @@ interface IParams {
   [key: string]: unknown;
 }
 
-function handleError(currentState: TransitionState, transition: Transition, error: Error): never {
+function handleError<R>(
+  currentState: TransitionState<R>,
+  transition: Transition<R>,
+  error: Error
+): never {
   // This is the only possible
   // reject value of TransitionState#resolve
   let routeInfos = currentState.routeInfos;
@@ -29,9 +33,9 @@ function handleError(currentState: TransitionState, transition: Transition, erro
   );
 }
 
-function resolveOneRouteInfo(
-  currentState: TransitionState,
-  transition: Transition
+function resolveOneRouteInfo<R>(
+  currentState: TransitionState<R>,
+  transition: Transition<R>
 ): void | Promise<void> {
   if (transition.resolveIndex === currentState.routeInfos.length) {
     // This is is the only possible
@@ -41,17 +45,16 @@ function resolveOneRouteInfo(
 
   let routeInfo = currentState.routeInfos[transition.resolveIndex]!;
 
-  let callback = proceed.bind(null, currentState, transition) as (
-    resolvedRouteInfo: ResolvedRouteInfo
-  ) => void | Promise<void>;
+  let callback = (resolvedRouteInfo: ResolvedRouteInfo<R>) =>
+    proceed(currentState, transition, resolvedRouteInfo);
 
   return routeInfo.resolve(transition).then(callback, null, currentState.promiseLabel('Proceed'));
 }
 
-function proceed(
-  currentState: TransitionState,
-  transition: Transition,
-  resolvedRouteInfo: ResolvedRouteInfo
+function proceed<R>(
+  currentState: TransitionState<R>,
+  transition: Transition<R>,
+  resolvedRouteInfo: ResolvedRouteInfo<R>
 ): void | Promise<void> {
   let wasAlreadyResolved = currentState.routeInfos[transition.resolveIndex]!.isResolved;
   const routeIndex = transition.resolveIndex;
@@ -84,8 +87,8 @@ function proceed(
   return resolveOneRouteInfo(currentState, transition);
 }
 
-export default class TransitionState {
-  routeInfos: InternalRouteInfo[] = [];
+export default class TransitionState<R = unknown> {
+  routeInfos: InternalRouteInfo<R>[] = [];
   queryParams: Dict<unknown> = {};
   params: IParams = {};
 
@@ -101,7 +104,7 @@ export default class TransitionState {
     return promiseLabel("'" + targetName + "': " + label);
   }
 
-  resolve(transition: Transition): Promise<TransitionState> {
+  resolve(transition: Transition<R>): Promise<TransitionState<R>> {
     // First, calculate params for this state. This is useful
     // information to provide to the various route hooks.
     let params = this.params;
@@ -115,8 +118,8 @@ export default class TransitionState {
 
     transition.resolveIndex = 0;
 
-    let callback = resolveOneRouteInfo.bind(null, this, transition);
-    let errorHandler = handleError.bind(null, this, transition);
+    let callback = () => resolveOneRouteInfo(this, transition);
+    let errorHandler = (error: Error) => handleError(this, transition, error);
 
     // The prelude RSVP.resolve() async moves us into the promise land.
     return Promise.resolve(null, this.promiseLabel('Start transition'))
@@ -131,6 +134,6 @@ export class TransitionError {
     public error: Error,
     public bucket: RouteStateBucket,
     public wasAborted: boolean,
-    public state: TransitionState
+    public state: TransitionState<any>
   ) {}
 }

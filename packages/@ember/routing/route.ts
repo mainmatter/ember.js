@@ -49,7 +49,7 @@ import {
   stashParamNames,
 } from './lib/utils';
 
-export interface ExtendedInternalRouteInfo extends InternalRouteInfo {
+export interface ExtendedInternalRouteInfo<R extends Route> extends InternalRouteInfo<ModelFor<R>> {
   _names?: unknown[];
 }
 
@@ -569,7 +569,10 @@ class Route<Model = unknown> extends EmberObject.extend(ActionHandler) {
 
     @method _stashNames
   */
-  _stashNames(routeInfo: ExtendedInternalRouteInfo, dynamicParent: ExtendedInternalRouteInfo) {
+  _stashNames(
+    routeInfo: ExtendedInternalRouteInfo<this>,
+    dynamicParent: ExtendedInternalRouteInfo<this>
+  ) {
     if (this._names) {
       return;
     }

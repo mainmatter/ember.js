@@ -20,7 +20,7 @@ export type OnRejected<T, TResult2> =
   | undefined
   | null;
 
-export type PublicTransition = Transition;
+export type PublicTransition = Transition<any>;
 export type OpaqueTransition = PublicTransition;
 
 export const STATE_SYMBOL = `__STATE__-2619860001345920-3322w3`;
@@ -43,19 +43,19 @@ export const REDIRECT_DESTINATION_SYMBOL = `__RDS__-2619863929824844-32323`;
   @param {Object} error
   @private
  */
-export default class Transition implements Partial<Promise<unknown>> {
-  [STATE_SYMBOL]: TransitionState;
+export default class Transition<R = unknown> implements Partial<Promise<unknown>> {
+  [STATE_SYMBOL]: TransitionState<R>;
   from: Maybe<RouteInfoWithAttributes> = null;
   to?: RouteInfo | RouteInfoWithAttributes = undefined;
-  router: Router;
+  router: Router<R>;
   data: Dict<any>;
   intent: Maybe<OpaqueIntent>;
-  resolvedModels: Dict<unknown | undefined>;
+  resolvedModels: Dict<R | undefined>;
   [QUERY_PARAMS_SYMBOL]: Dict<unknown>;
   promise?: Promise<any>; // Todo: Fix this shit its actually TransitionState | IHandler | undefined | Error
   error: Maybe<unknown>;
   [PARAMS_SYMBOL]: Dict<unknown>;
-  routeInfos: InternalRouteInfo[];
+  routeInfos: InternalRouteInfo<R>[];
   targetName: Maybe<string>;
   pivotBucket: Maybe<object>;
   sequence: number;
@@ -70,7 +70,7 @@ export default class Transition implements Partial<Promise<unknown>> {
   isCausedByAbortingReplaceTransition = false;
   _visibleQueryParams: Dict<unknown> = {};
   isIntermediate = false;
-  [REDIRECT_DESTINATION_SYMBOL]?: Transition;
+  [REDIRECT_DESTINATION_SYMBOL]?: Transition<any>;
 
   // AbortController for the navigation. Managers receive its `signal` via
   // `AsyncNavigationState` and can pass it to `fetch()` or any other
@@ -107,14 +107,14 @@ export default class Transition implements Partial<Promise<unknown>> {
     @property debugPreviousTransition
     @type {Transition | undefined}
   */
-  declare debugPreviousTransition: Maybe<Transition>;
+  declare debugPreviousTransition: Maybe<Transition<any>>;
 
   constructor(
-    router: Router,
+    router: Router<R>,
     intent: Maybe<OpaqueIntent>,
-    state: TransitionState | undefined,
+    state: TransitionState<R> | undefined,
     error: Maybe<unknown> = undefined,
-    previousTransition: Maybe<Transition> = undefined
+    previousTransition: Maybe<Transition<any>> = undefined
   ) {
     this[STATE_SYMBOL] = state! || router.state!;
     this.intent = intent;
@@ -256,7 +256,7 @@ export default class Transition implements Partial<Promise<unknown>> {
     @return {Promise}
     @public
    */
-  catch<T>(onRejection?: OnRejected<TransitionState, T>, label?: string) {
+  catch<T>(onRejection?: OnRejected<TransitionState<R>, T>, label?: string) {
     return this.promise!.catch(onRejection, label);
   }
 
@@ -318,7 +318,7 @@ export default class Transition implements Partial<Promise<unknown>> {
     }
   }
 
-  redirect(newTransition: Transition) {
+  redirect(newTransition: Transition<any>) {
     this[REDIRECT_DESTINATION_SYMBOL] = newTransition;
     this.rollback();
     this.router.routeWillChange(newTransition);
@@ -383,7 +383,7 @@ export default class Transition implements Partial<Promise<unknown>> {
     ignoreFailure = false,
     _name: string,
     err?: Error,
-    transition?: Transition,
+    transition?: Transition<any>,
     handler?: object
   ) {
     this.trigger(ignoreFailure, _name, err, transition, handler);
@@ -455,7 +455,7 @@ export default class Transition implements Partial<Promise<unknown>> {
 
   Logs and returns an instance of TransitionAborted.
  */
-export function logAbort(transition: Transition): TransitionAbortedError {
+export function logAbort(transition: Transition<any>): TransitionAbortedError {
   log(transition.router, transition.sequence, 'detected abort.');
 
   return buildTransitionAborted();

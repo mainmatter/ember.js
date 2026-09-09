@@ -9,18 +9,18 @@ import { TransitionIntent } from '../transition-intent';
 import TransitionState from '../transition-state';
 import { isParam, merge } from '../utils';
 
-export default class NamedTransitionIntent extends TransitionIntent {
+export default class NamedTransitionIntent<R = unknown> extends TransitionIntent<R> {
   name: string;
   pivotName?: string;
-  contexts: unknown[];
+  contexts: R[];
   queryParams: Dict<unknown>;
-  preTransitionState?: TransitionState = undefined;
+  preTransitionState?: TransitionState<R> = undefined;
 
   constructor(
-    router: Router,
+    router: Router<R>,
     name: string,
     pivotName: string | undefined,
-    contexts: unknown[] = [],
+    contexts: R[] = [],
     queryParams: Dict<unknown> = {},
     data?: object
   ) {
@@ -31,7 +31,7 @@ export default class NamedTransitionIntent extends TransitionIntent {
     this.queryParams = queryParams;
   }
 
-  applyToState(oldState: TransitionState, isIntermediate: boolean): TransitionState {
+  applyToState(oldState: TransitionState<R>, isIntermediate: boolean): TransitionState<R> {
     let handlers: ParsedHandler[] = this.router.recognizer.handlersFor(this.name);
 
     let targetRouteName = handlers[handlers.length - 1]!.handler;
@@ -40,14 +40,14 @@ export default class NamedTransitionIntent extends TransitionIntent {
   }
 
   applyToHandlers(
-    oldState: TransitionState,
+    oldState: TransitionState<R>,
     parsedHandlers: ParsedHandler[],
     targetRouteName: string,
     isIntermediate: boolean,
     checkingIfActive: boolean
   ) {
     let i, len;
-    let newState = new TransitionState();
+    let newState = new TransitionState<R>();
     let objects = this.contexts.slice(0);
 
     let invalidateIndex = parsedHandlers.length;
@@ -68,9 +68,9 @@ export default class NamedTransitionIntent extends TransitionIntent {
 
       let oldHandlerInfo = oldState.routeInfos[i]!;
       let newHandlerInfo:
-        | InternalRouteInfo
-        | UnresolvedRouteInfoByObject
-        | ResolvedRouteInfo
+        | InternalRouteInfo<R>
+        | UnresolvedRouteInfoByObject<R>
+        | ResolvedRouteInfo<R>
         | null = null;
 
       if (result.names.length > 0) {
@@ -117,8 +117,10 @@ export default class NamedTransitionIntent extends TransitionIntent {
         newHandlerInfo.context = oldContext as Awaited<typeof oldContext>;
       }
 
-      let handlerToUse: InternalRouteInfo | UnresolvedRouteInfoByObject | ResolvedRouteInfo =
-        oldHandlerInfo;
+      let handlerToUse:
+        | InternalRouteInfo<R>
+        | UnresolvedRouteInfoByObject<R>
+        | ResolvedRouteInfo<R> = oldHandlerInfo;
 
       if (i >= invalidateIndex || newHandlerInfo.shouldSupersede(oldHandlerInfo)) {
         invalidateIndex = Math.min(i, invalidateIndex);
@@ -129,7 +131,7 @@ export default class NamedTransitionIntent extends TransitionIntent {
         handlerToUse = handlerToUse.becomeResolved(
           null,
           // SAFETY: This seems to imply that it would be resolved, but it's unclear if that's actually the case.
-          handlerToUse.context as unknown
+          handlerToUse.context as R
         );
       }
 
@@ -155,12 +157,12 @@ export default class NamedTransitionIntent extends TransitionIntent {
     return newState;
   }
 
-  invalidateChildren(handlerInfos: InternalRouteInfo[], invalidateIndex: number) {
+  invalidateChildren(handlerInfos: InternalRouteInfo<R>[], invalidateIndex: number) {
     for (let i = invalidateIndex, l = handlerInfos.length; i < l; ++i) {
       let handlerInfo = handlerInfos[i]!;
       if (handlerInfo.isResolved) {
         let { name, params, management, paramNames } = handlerInfos[i]!;
-        handlerInfos[i] = new UnresolvedRouteInfoByParam(
+        handlerInfos[i] = new UnresolvedRouteInfoByParam<R>(
           this.router,
           name,
           paramNames,
@@ -174,12 +176,12 @@ export default class NamedTransitionIntent extends TransitionIntent {
   getHandlerInfoForDynamicSegment(
     name: string,
     names: string[],
-    objects: unknown[],
-    oldHandlerInfo: InternalRouteInfo,
+    objects: R[],
+    oldHandlerInfo: InternalRouteInfo<R>,
     _targetRouteName: string,
     i: number
-  ): UnresolvedRouteInfoByObject {
-    let objectToUse: unknown | PromiseLike<unknown> | undefined;
+  ): UnresolvedRouteInfoByObject<R> {
+    let objectToUse: R | PromiseLike<R> | undefined;
     if (objects.length > 0) {
       // Use the objects provided for this transition.
       objectToUse = objects[objects.length - 1];
@@ -194,7 +196,7 @@ export default class NamedTransitionIntent extends TransitionIntent {
     } else {
       if (this.preTransitionState) {
         let preTransitionHandlerInfo = this.preTransitionState.routeInfos[i] as
-          | ResolvedRouteInfo
+          | ResolvedRouteInfo<R>
           | undefined;
         objectToUse = preTransitionHandlerInfo?.context;
       } else {
@@ -209,14 +211,14 @@ export default class NamedTransitionIntent extends TransitionIntent {
       }
     }
 
-    return new UnresolvedRouteInfoByObject(this.router, name, names, objectToUse);
+    return new UnresolvedRouteInfoByObject<R>(this.router, name, names, objectToUse);
   }
 
   createParamHandlerInfo(
     name: string,
     names: string[],
     objects: unknown[],
-    oldHandlerInfo: InternalRouteInfo
+    oldHandlerInfo: InternalRouteInfo<R>
   ) {
     let params: Dict<unknown> = {};
 
@@ -250,6 +252,6 @@ export default class NamedTransitionIntent extends TransitionIntent {
       );
     }
 
-    return new UnresolvedRouteInfoByParam(this.router, name, names, params);
+    return new UnresolvedRouteInfoByParam<R>(this.router, name, names, params);
   }
 }
